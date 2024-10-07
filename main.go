@@ -8,19 +8,22 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+const ROOTPATH string = "./a"
+
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	// zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	zlog.Logger = zlog.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	//zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zlog.Logger = zlog.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "[2006-01-02 15:04:05]"})
 	if err := runApp(); err != nil {
-		LogError("Application error: %v", err)
+		LogError("Application error: %w", err)
 		os.Exit(1)
 	}
 }
 
 func runApp() error {
-	urls := []string{"gemini://smol.gr"} //, "gemini://gmi.noulin.neta/", "gemini://in.gr:443"}
+	//urls := []string{"gemini://smol.gr"}
+	urls := []string{"gemini://smol.gr", "gemini://gmi.noulin.net/"}
 
 	queue := make(chan string)
 	done := make(chan struct{})
@@ -45,7 +48,7 @@ func runApp() error {
 
 func crawler(queue <-chan string, done chan struct{}) {
 	// Start processing results.
-	results := make(chan Result)
+	results := make(chan Snapshot)
 	resultsDone := make(chan struct{})
 	go resultsHandler(results, resultsDone)
 
@@ -68,7 +71,7 @@ func crawler(queue <-chan string, done chan struct{}) {
 	LogInfo("All workers have finished")
 
 	// Nobody left to send to results, so we
-	// close it, and the ResultsProcessor can
+	// close it, and the SnapshotsProcessor can
 	// finish
 	close(results)
 	<-resultsDone
@@ -76,28 +79,34 @@ func crawler(queue <-chan string, done chan struct{}) {
 	close(done)
 }
 
-func resultsHandler(results <-chan Result, done chan struct{}) {
+func resultsHandler(results <-chan Snapshot, done chan struct{}) {
 	for result := range results {
-		if result.error != nil {
-			LogError("%w", result.error)
+		if result.Error != nil {
+			LogError("[%s] %w", result.Url, result.Error)
 		} else {
-			LogInfo("[%s] Done. Result: %#v", result.url, result)
+			LogInfo("[%s] Done", result.Url)
+			// fmt.Printf(SnapshotToJSON(result))
 		}
 	}
 	LogInfo("All results have been processed")
 	close(done)
 }
 
-func worker(queue <-chan string, results chan Result) {
+func worker(queue <-chan string, results chan Snapshot) {
 	for url := range queue {
 		result := Visit(url)
 		// If we encountered an error when
 		// visiting, skip processing
-		if result.error != nil {
+		if result.Error != nil {
 			results <- *result
 			continue
 		}
 		result = Process(result)
+		if result.Error != nil {
+			results <- *result
+			continue
+		}
+		SaveResult(ROOTPATH, result)
 		results <- *result
 	}
 }

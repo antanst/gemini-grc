@@ -8,34 +8,34 @@ import (
 	"strconv"
 )
 
-func Process(result *Result) *Result {
-	LogInfo("[%s] Processing data", result.url.String())
-	code, err := ParseFirstTwoDigits(result.data)
+func Process(snapshot *Snapshot) *Snapshot {
+	LogInfo("[%s] Processing data", snapshot.Url.String())
+	code, err := ParseFirstTwoDigits(snapshot.Data)
 	if err != nil {
-		result.error = fmt.Errorf("[%s] Invalid gemini response code", result.url.String())
-		return result
+		snapshot.Error = fmt.Errorf("[%s] Invalid gemini response code", snapshot.Url.String())
+		return snapshot
 	}
 	if code != 20 {
-		result.error = fmt.Errorf("[%s] Gemini response code != 20, skipping", result.url.String())
-		return result
+		snapshot.Error = fmt.Errorf("[%s] Gemini response code != 20, skipping", snapshot.Url.String())
+		return snapshot
 	}
 	// Grab link lines
-	linkLines := ExtractLinkLines(result.data)
-	LogDebug("[%s] Found %d links", result.url.String(), len(linkLines))
-	// Normalize URLs in links, and store them in result
+	linkLines := ExtractLinkLines(snapshot.Data)
+	LogDebug("[%s] Found %d links", snapshot.Url.String(), len(linkLines))
+	// Normalize URLs in links, and store them in snapshot
 	for _, line := range linkLines {
-		normalizedLink, descr, error := NormalizeLink(line, result.url.String())
+		normalizedLink, descr, error := NormalizeLink(line, snapshot.Url.String())
 		if error != nil {
-			LogError("[%s] Invalid link URL %w", result.url.String(), error)
+			LogError("[%s] Invalid link URL %w", snapshot.Url.String(), error)
 			continue
 		}
 		geminiUrl, error := ParseUrl(normalizedLink, descr)
 		if error != nil {
-			LogError("[%s] Unparseable gemini link %w", result.url.String(), error)
+			LogError("[%s] Unparseable gemini link %w", snapshot.Url.String(), error)
 		}
-		result.links = append(result.links, *geminiUrl)
+		snapshot.Links = append(snapshot.Links, *geminiUrl)
 	}
-	return result
+	return snapshot
 }
 
 func ParseUrl(input string, descr string) (*GeminiUrl, error) {
@@ -46,6 +46,7 @@ func ParseUrl(input string, descr string) (*GeminiUrl, error) {
 	protocol := u.Scheme
 	hostname := u.Hostname()
 	str_port := u.Port()
+	path := u.Path
 	if str_port == "" {
 		str_port = "1965"
 	}
@@ -53,7 +54,7 @@ func ParseUrl(input string, descr string) (*GeminiUrl, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing URL %s: %w", input, err)
 	}
-	return &GeminiUrl{protocol: protocol, hostname: hostname, port: port, path: u.Path, descr: descr}, nil
+	return &GeminiUrl{Protocol: protocol, Hostname: hostname, Port: port, Path: path, Descr: descr, Full: u.String()}, nil
 }
 
 // ExtractLinkLines takes a Gemtext document as a string and returns all lines that are link lines
@@ -107,6 +108,14 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 
 	// Construct the canonicalized link line
 	canonicalURLStr := parsedURL.String()
+
+	// Remove usual first space from URL description:
+	// => URL description
+	//       ^^^^^^^^^^^^
+	if restOfLine[0] == ' ' {
+		restOfLine = restOfLine[1:]
+	}
+
 	return canonicalURLStr, restOfLine, nil
 	//	canonicalizedLine := fmt.Sprintf("=> %s%s", canonicalURLStr, restOfLine)
 	// return canonicalizedLine, nil
@@ -125,10 +134,10 @@ func ParseFirstTwoDigits(input string) (int, error) {
 	}
 
 	// Parse the captured match as an integer
-	result, err := strconv.Atoi(matches[1])
+	snapshot, err := strconv.Atoi(matches[1])
 	if err != nil {
 		return 0, fmt.Errorf("failed to convert matched digits to int: %v", err)
 	}
 
-	return result, nil
+	return snapshot, nil
 }
