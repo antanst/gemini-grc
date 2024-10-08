@@ -6,20 +6,48 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
+func checkStatusCode(code int) error {
+	switch {
+	case code == 20:
+		return nil
+	case code >= 10 && code < 20:
+		return fmt.Errorf("Gemini response %d needs data input", code)
+	case code >= 30 && code < 40:
+		return fmt.Errorf("Gemini response %d redirect", code)
+	case code >= 40 && code < 50:
+		return fmt.Errorf("Gemini response %d server error", code)
+	case code >= 50 && code < 60:
+		return fmt.Errorf("Gemini response %d server permanent error", code)
+	case code >= 60 && code < 70:
+		return fmt.Errorf("Gemini response %d certificate error", code)
+	default:
+		return fmt.Errorf("Unexpected/unhandled Gemini response %d", code)
+	}
+}
+
 func Process(snapshot *Snapshot) *Snapshot {
-	LogInfo("[%s] Processing data", snapshot.Url.String())
+	LogDebug("[%s] Processing snapshot", snapshot.Url.String())
 	code, err := ParseFirstTwoDigits(snapshot.Data)
 	if err != nil {
-		snapshot.Error = fmt.Errorf("[%s] Invalid gemini response code", snapshot.Url.String())
+		snapshot.Error = fmt.Errorf("[%s] No/invalid gemini response code", snapshot.Url.String())
 		return snapshot
 	}
-	if code != 20 {
-		snapshot.Error = fmt.Errorf("[%s] Gemini response code != 20, skipping", snapshot.Url.String())
+	err = checkStatusCode(code)
+	if err != nil {
+		snapshot.Error = fmt.Errorf("[%s] Gemini response code error, skipping. %w", snapshot.Url.String(), err)
 		return snapshot
 	}
-	// Grab link lines
+
+	// Remove response code from body (first line)
+	index := strings.Index(snapshot.Data, "\n")
+	if index != -1 {
+		snapshot.Data = snapshot.Data[index+1:]
+	}
+
+	// Grab any link lines
 	linkLines := ExtractLinkLines(snapshot.Data)
 	LogDebug("[%s] Found %d links", snapshot.Url.String(), len(linkLines))
 	// Normalize URLs in links, and store them in snapshot
@@ -112,7 +140,7 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	// Remove usual first space from URL description:
 	// => URL description
 	//       ^^^^^^^^^^^^
-	if restOfLine[0] == ' ' {
+	if len(restOfLine) > 0 && restOfLine[0] == ' ' {
 		restOfLine = restOfLine[1:]
 	}
 

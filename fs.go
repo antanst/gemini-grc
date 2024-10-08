@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -46,10 +47,9 @@ func calcFilePath(rootPath, urlPath string) (string, error) {
 	// Normalize the URL path
 	cleanPath := filepath.Clean(urlPath)
 
-	fmt.Printf("%s %s\n", urlPath, cleanPath)
 	// Safe check to prevent directory traversal
 	if strings.Contains(cleanPath, "..") {
-		return "", fmt.Errorf("invalid URL path: contains directory traversal")
+		return "", fmt.Errorf("Invalid URL path: contains directory traversal")
 	}
 
 	// Sanitize the path by encoding invalid characters
@@ -58,29 +58,36 @@ func calcFilePath(rootPath, urlPath string) (string, error) {
 	// Join the root path and the sanitized URL path
 	finalPath := filepath.Join(rootPath, safePath)
 
-	// Ensure the directory exists
-	dir := filepath.Dir(finalPath)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return "", fmt.Errorf("failed to create directories: %v", err)
-	}
-
 	return finalPath, nil
 }
 
 func SaveResult(rootPath string, s *Snapshot) {
+	parentPath := path.Join(rootPath, s.Url.Hostname)
 	urlPath := s.Url.Path
-	if urlPath == "" || urlPath == "/" {
-		urlPath = fmt.Sprintf("%s/index.gmi", s.Url.Hostname)
+	// If path is empty, add `index.gmi` as the file to save
+	if urlPath == "" || urlPath == "." {
+		urlPath = fmt.Sprintf("index.gmi")
 	}
-	filepath, err := calcFilePath(rootPath, urlPath)
+	// If path ends with '/' then add index.gmi for the
+	// directory to be created.
+	if strings.HasSuffix(urlPath, "/") {
+		urlPath = strings.Join([]string{urlPath, "index.gmi"}, "")
+	}
+
+	finalPath, err := calcFilePath(parentPath, urlPath)
 	if err != nil {
 		LogError("Error saving %s: %w", s.Url, err)
 		return
 	}
-	//	err = os.WriteFile(filepath, []byte(SnapshotToJSON(*s)), 0666)
-	err = os.WriteFile(filepath, []byte((*s).Data), 0666)
+	// Ensure the directory exists
+	dir := filepath.Dir(finalPath)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		LogError("Failed to create directory: %w", err)
+		return
+	}
+	err = os.WriteFile(finalPath, []byte((*s).Data), 0666)
 	if err != nil {
 		LogError("Error saving %s: %w", s.Url.Full, err)
 	}
-	LogInfo("[%s] Saved to %s", s.Url.Full, filepath)
+	LogInfo("[%s] Saved to %s", s.Url.Full, finalPath)
 }

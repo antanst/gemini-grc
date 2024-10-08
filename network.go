@@ -24,7 +24,7 @@ func Visit(url string) (result *Snapshot) {
 	}
 	result.Url = *geminiUrl
 
-	LogInfo("[%s] Dialing", geminiUrl)
+	LogInfo("[%s] Connecting", geminiUrl)
 
 	// Establish a TLS connection
 	tlsConfig := &tls.Config{
@@ -65,7 +65,7 @@ func Visit(url string) (result *Snapshot) {
 			}
 		}
 	}
-	LogInfo("[%s] Received %d bytes", geminiUrl.String(), len(data))
+	LogDebug("[%s] Received %d bytes", geminiUrl.String(), len(data))
 	// time.Sleep(time.Duration(time.Second * 2))
 	// LogDebug("[%s] Visitor finished", geminiUrl.String())
 	result.Data = string(data)
