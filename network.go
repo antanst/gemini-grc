@@ -13,7 +13,7 @@ func Visit(url string) (result *Snapshot) {
 	// Wrap error with additional information
 	defer func() {
 		if result.Error != nil {
-			result.Error = fmt.Errorf("[%s] Error: %w", result.Url, result.Error)
+			result.Error = fmt.Errorf("[%s] Error: %w", result.URL, result.Error)
 		}
 	}()
 
@@ -22,9 +22,9 @@ func Visit(url string) (result *Snapshot) {
 		result.Error = err
 		return result
 	}
-	result.Url = *geminiUrl
+	result.URL = *geminiUrl
 
-	LogInfo("[%s] Connecting", geminiUrl)
+	LogDebug("[%s] Connecting", geminiUrl)
 
 	// Establish a TLS connection
 	tlsConfig := &tls.Config{
@@ -40,11 +40,12 @@ func Visit(url string) (result *Snapshot) {
 	defer func() {
 		err := conn.Close()
 		if err != nil {
-			result.Error = fmt.Errorf("[%s] Closing connection error, ignoring: %w", result.Url.String(), err)
+			result.Error = fmt.Errorf("[%s] Closing connection error, ignoring: %w", result.URL.String(), err)
 		}
 	}()
 
 	// Read data from the connection
+	// TODO make timeout configurable
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buf := make([]byte, 1024)
 	var data []byte
@@ -55,6 +56,10 @@ func Visit(url string) (result *Snapshot) {
 		n, err := conn.Read(buf)
 		if n > 0 {
 			data = append(data, buf[:n]...)
+		}
+		if len(data) > CONFIG.maxResponseSize {
+			result.Error = fmt.Errorf("Response size exceeded maximum of %d bytes", CONFIG.maxResponseSize)
+			return result
 		}
 		if err != nil {
 			if err == io.EOF {

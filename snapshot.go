@@ -7,19 +7,24 @@ import (
 )
 
 type Snapshot struct {
-	Url       GeminiUrl   `json:"url,omitempty"`
+	UID       string      `json:"uid,omitempty"`
+	URL       GeminiUrl   `json:"url,omitempty"`
 	Timestamp time.Time   `json:"timestamp,omitempty"`
+	MimeType  string      `json:"mimetype,omitempty"`
 	Data      string      `json:"data,omitempty"`
 	Links     []GeminiUrl `json:"links,omitempty"`
-	Code      int         `json:"code,omitempty"`
-	Error     error       `json:"error,omitempty"`
-	UID       string      `json:"uid,omitempty"`
+	Lang      string      `json:"lang,omitempty"`
+	// Gemini status code
+	ResponseCode int `json:"code,omitempty"`
+	// On network errors, for Gemini server errors
+	// we have ResponseCode above.
+	Error error `json:"error,omitempty"`
 }
 
 func (u Snapshot) String() string {
 	return fmt.Sprintf(
-		"[%s] %s %s %s %d %s",
-		u.UID, u.Url, u.Timestamp, u.Links, u.Code, u.Error,
+		"[%s] %s %s %s %d %s %s %s",
+		u.UID, u.URL, u.Timestamp, u.Links, u.ResponseCode, u.MimeType, u.Lang, u.Error,
 	)
 }
 

@@ -1,4 +1,6 @@
 .idea
+**/.#*
+**/*~
 /run.sh
 /gemini-grc
 /snaps

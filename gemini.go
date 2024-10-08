@@ -4,12 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-func checkStatusCode(code int) error {
+func checkGeminiStatusCode(code int) error {
 	switch {
 	case code == 20:
 		return nil
@@ -28,20 +31,36 @@ func checkStatusCode(code int) error {
 	}
 }
 
-func Process(snapshot *Snapshot) *Snapshot {
-	LogDebug("[%s] Processing snapshot", snapshot.Url.String())
+func parseHeaders(data string) (string, string) {
+	re := regexp.MustCompile(`^\d+\s+([a-zA-Z0-9/\-+]+)[;\s]+(lang=([a-zA-Z0-9-]+))?`)
+	matches := re.FindStringSubmatch(data)
+	if matches == nil || len(matches) <= 1 {
+		return "", ""
+	}
+	return matches[1], matches[3]
+}
+
+func ProcessHeaders(snapshot *Snapshot) *Snapshot {
+	LogDebug("[%s] Processing snapshot", snapshot.URL.String())
+	mimetype, lang := parseHeaders(snapshot.Data)
+	if mimetype != "" {
+		snapshot.MimeType = mimetype
+	}
+	if lang != "" {
+		snapshot.Lang = lang
+	}
+	return snapshot
+}
+
+func ProcessGemini(snapshot *Snapshot) *Snapshot {
 	code, err := ParseFirstTwoDigits(snapshot.Data)
 	if err != nil {
-		snapshot.Error = fmt.Errorf("[%s] No/invalid gemini response code", snapshot.Url.String())
+		snapshot.Error = fmt.Errorf("[%s] No/invalid gemini response code", snapshot.URL.String())
 		return snapshot
 	}
-	err = checkStatusCode(code)
-	if err != nil {
-		snapshot.Error = fmt.Errorf("[%s] Gemini response code error, skipping. %w", snapshot.Url.String(), err)
-		return snapshot
-	}
+	snapshot.ResponseCode = code
 
-	// Remove response code from body (first line)
+	// Remove response headers from body (first line)
 	index := strings.Index(snapshot.Data, "\n")
 	if index != -1 {
 		snapshot.Data = snapshot.Data[index+1:]
@@ -49,21 +68,52 @@ func Process(snapshot *Snapshot) *Snapshot {
 
 	// Grab any link lines
 	linkLines := ExtractLinkLines(snapshot.Data)
-	LogDebug("[%s] Found %d links", snapshot.Url.String(), len(linkLines))
+	LogDebug("[%s] Found %d links", snapshot.URL.String(), len(linkLines))
+
 	// Normalize URLs in links, and store them in snapshot
 	for _, line := range linkLines {
-		normalizedLink, descr, error := NormalizeLink(line, snapshot.Url.String())
+		normalizedLink, descr, error := NormalizeLink(line, snapshot.URL.String())
 		if error != nil {
-			LogError("[%s] Invalid link URL %w", snapshot.Url.String(), error)
+			LogError("[%s] Invalid link URL %w", snapshot.URL.String(), error)
 			continue
 		}
 		geminiUrl, error := ParseUrl(normalizedLink, descr)
 		if error != nil {
-			LogError("[%s] Unparseable gemini link %w", snapshot.Url.String(), error)
+			LogError("[%s] Unparseable gemini link %w", snapshot.URL.String(), error)
 		}
 		snapshot.Links = append(snapshot.Links, *geminiUrl)
 	}
 	return snapshot
+}
+
+func SaveResult(rootPath string, s *Snapshot) {
+	parentPath := path.Join(rootPath, s.URL.Hostname)
+	urlPath := s.URL.Path
+	// If path is empty, add `index.gmi` as the file to save
+	if urlPath == "" || urlPath == "." {
+		urlPath = fmt.Sprintf("index.gmi")
+	}
+	// If path ends with '/' then add index.gmi for the
+	// directory to be created.
+	if strings.HasSuffix(urlPath, "/") {
+		urlPath = strings.Join([]string{urlPath, "index.gmi"}, "")
+	}
+
+	finalPath, err := calcFilePath(parentPath, urlPath)
+	if err != nil {
+		LogError("Error saving %s: %w", s.URL, err)
+		return
+	}
+	// Ensure the directory exists
+	dir := filepath.Dir(finalPath)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		LogError("Failed to create directory: %w", err)
+		return
+	}
+	err = os.WriteFile(finalPath, []byte((*s).Data), 0666)
+	if err != nil {
+		LogError("Error saving %s: %w", s.URL.Full, err)
+	}
 }
 
 func ParseUrl(input string, descr string) (*GeminiUrl, error) {
