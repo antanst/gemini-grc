@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math/rand/v2"
 	"os"
 	"strings"
 	"time"
@@ -25,13 +24,17 @@ func main() {
 
 func runApp() error {
 	// urls := []string{"gemini://smol.gr"}
-	urls := []string{"gemini://gmi.noulin.net/", "gemini://warmedal.se/~antenna/"}
+	// urls := []string{"gemini://gemini.circumlunar.space/users/solderpunk/gemlog/orphans-of-netscape.gmi"} // Test 31 redirect
+	// urls := []string{"gemini://zaibatsu.circumlunar.space/~solderpunk/gemlog/orphans-of-netscape.gmi"}
+	// urls := []string{"gemini://farcaster.net/berlin/dared.jpg"}
+	// urls := []string{"gemini://smol.gr/media/amstrad_cpc_6128.jpg", "https://go.dev/blog/go-brand/Go-Logo/PNG/Go-Logo_Blue.png"}
+	urls := []string{"gemini://tlgs.one/", "gemini://gmi.noulin.net/", "gemini://warmedal.se/~antenna/"}
 
 	queue := make(chan string, 1000)
 	results := make(chan Snapshot, 100)
 	done := make(chan struct{})
 
-	go spawnStats(queue, results)
+	go spawnStatsReport(queue, results)
 	go resultsHandler(queue, results)
 	spawnWorkers(CONFIG.numOfWorkers, queue, results)
 
@@ -42,7 +45,7 @@ func runApp() error {
 	return nil
 }
 
-func spawnStats(queue chan string, results chan Snapshot) {
+func spawnStatsReport(queue chan string, results chan Snapshot) {
 	ticker := time.NewTicker(time.Duration(time.Second * 10))
 	defer ticker.Stop()
 	for range ticker.C {
@@ -53,7 +56,6 @@ func spawnStats(queue chan string, results chan Snapshot) {
 
 func spawnWorkers(numOfWorkers int, queue <-chan string, results chan Snapshot) {
 	LogInfo("Spawning %d workers", numOfWorkers)
-	// Start worker goroutines
 	for i := 0; i < numOfWorkers; i++ {
 		go func(i int) {
 			worker(i, queue, results)
@@ -85,8 +87,16 @@ func resultsHandler(queue chan string, results <-chan Snapshot) {
 
 func worker(id int, queue <-chan string, results chan Snapshot) {
 	for url := range queue {
-		LogDebug("Worker %d visiting %s", id, url)
-		result := Visit(url)
+		if !shouldVisit(url) {
+			LogInfo("Skipping %s", url)
+			continue
+		}
+		LogInfo("Worker %d visiting %s", id, url)
+		result, err := Visit(url)
+		if err != nil {
+			LogError("[%s] %w", url, err)
+			continue
+		}
 		// If we encountered an error when
 		// visiting, skip processing
 		if result.Error != nil {
@@ -94,21 +104,23 @@ func worker(id int, queue <-chan string, results chan Snapshot) {
 			continue
 		}
 		LogDebug("Worker %d processing %s", id, url)
-		result = ProcessHeaders(result)
-		if result.Error != nil {
-			results <- *result
-			continue
-		}
 		if result.MimeType == "text/gemini" {
 			result = ProcessGemini(result)
 		}
 		if shouldPersist(result) {
-			LogInfo("Worker %d saving %s", id, url)
-			SaveResult(CONFIG.rootPath, result)
+			LogDebug("Worker %d saving %s", id, url)
+			SaveSnapshot(CONFIG.rootPath, result)
 		}
 		results <- *result
-		time.Sleep(time.Duration(rand.IntN(5)) * time.Second)
+		// time.Sleep(time.Duration(rand.IntN(5)) * time.Second)
 	}
+}
+
+func shouldVisit(url string) bool {
+	if !strings.HasPrefix(url, "gemini://") {
+		return false
+	}
+	return true
 }
 
 func shouldPersist(result *Snapshot) bool {

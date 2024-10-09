@@ -13,6 +13,7 @@ type Config struct {
 	rootPath        string
 	numOfWorkers    int
 	maxResponseSize int
+	responseTimeout int
 }
 
 func getConfig() *Config {
@@ -22,6 +23,7 @@ func getConfig() *Config {
 		"ROOT_PATH",
 		"NUM_OF_WORKERS",
 		"MAX_RESPONSE_SIZE",
+		"RESPONSE_TIMEOUT",
 	} {
 		if env, ok := os.LookupEnv(envVar); !ok {
 			fmt.Fprintf(os.Stderr, "Missing env var %s\n", envVar)
@@ -57,6 +59,15 @@ func getConfig() *Config {
 						os.Exit(1)
 					} else {
 						config.maxResponseSize = maxResponseSize
+					}
+				}
+			case "RESPONSE_TIMEOUT":
+				{
+					if val, err := strconv.Atoi(env); err != nil {
+						fmt.Fprintf(os.Stderr, "Invalid RESPONSE_TIMEOUT value\n")
+						os.Exit(1)
+					} else {
+						config.responseTimeout = val
 					}
 				}
 			}

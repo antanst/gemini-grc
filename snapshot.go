@@ -11,7 +11,8 @@ type Snapshot struct {
 	URL       GeminiUrl   `json:"url,omitempty"`
 	Timestamp time.Time   `json:"timestamp,omitempty"`
 	MimeType  string      `json:"mimetype,omitempty"`
-	Data      string      `json:"data,omitempty"`
+	Data      []byte      `json:"data,omitempty"`
+	GemText   string      `json:"gemtext,omitempty"`
 	Links     []GeminiUrl `json:"links,omitempty"`
 	Lang      string      `json:"lang,omitempty"`
 	// Gemini status code

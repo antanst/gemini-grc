@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -57,4 +59,34 @@ func calcFilePath(rootPath, urlPath string) (string, error) {
 	finalPath := filepath.Join(rootPath, safePath)
 
 	return finalPath, nil
+}
+
+func SaveSnapshot(rootPath string, s *Snapshot) {
+	parentPath := path.Join(rootPath, s.URL.Hostname)
+	urlPath := s.URL.Path
+	// If path is empty, add `index.gmi` as the file to save
+	if urlPath == "" || urlPath == "." {
+		urlPath = fmt.Sprintf("index.gmi")
+	}
+	// If path ends with '/' then add index.gmi for the
+	// directory to be created.
+	if strings.HasSuffix(urlPath, "/") {
+		urlPath = strings.Join([]string{urlPath, "index.gmi"}, "")
+	}
+
+	finalPath, err := calcFilePath(parentPath, urlPath)
+	if err != nil {
+		LogError("Error saving %s: %w", s.URL, err)
+		return
+	}
+	// Ensure the directory exists
+	dir := filepath.Dir(finalPath)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		LogError("Failed to create directory: %w", err)
+		return
+	}
+	err = os.WriteFile(finalPath, []byte((*s).Data), 0666)
+	if err != nil {
+		LogError("Error saving %s: %w", s.URL.Full, err)
+	}
 }
