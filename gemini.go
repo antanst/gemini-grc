@@ -99,16 +99,21 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	}
 
 	originalURLStr := matches[1]
+	decodedURLStr, err := url.QueryUnescape(originalURLStr)
+	if err != nil {
+		return "", "", fmt.Errorf("Error decoding URL: %w", err)
+	}
+
 	restOfLine := ""
 	if len(matches) > 2 {
 		restOfLine = matches[2]
 	}
 
 	// Parse the URL from the link line
-	parsedURL, err := url.Parse(originalURLStr)
+	parsedURL, err := url.Parse(decodedURLStr)
 	if err != nil {
 		// If URL parsing fails, return an error
-		return "", "", fmt.Errorf("Invalid URL in link line '%s': %v", originalURLStr, err)
+		return "", "", fmt.Errorf("Invalid URL in link line '%s': %v", decodedURLStr, err)
 	}
 
 	// Resolve relative URLs against the base URL

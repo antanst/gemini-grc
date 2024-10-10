@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -11,7 +12,10 @@ import (
 
 var CONFIG Config
 
+var wg sync.WaitGroup
+
 func main() {
+	wg.Add(1)
 	CONFIG = *getConfig()
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	zerolog.SetGlobalLevel(CONFIG.logLevel)
