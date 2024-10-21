@@ -1,7 +1,8 @@
-package main
+package gemini
 
 import (
 	"fmt"
+	"gemini-grc/logging"
 	"net/url"
 	"os"
 	"path"
@@ -61,7 +62,7 @@ func calcFilePath(rootPath, urlPath string) (string, error) {
 	return finalPath, nil
 }
 
-func SaveSnapshot(rootPath string, s *Snapshot) {
+func SaveToFile(rootPath string, s *Snapshot, done chan struct{}) {
 	parentPath := path.Join(rootPath, s.URL.Hostname)
 	urlPath := s.URL.Path
 	// If path is empty, add `index.gmi` as the file to save
@@ -76,17 +77,37 @@ func SaveSnapshot(rootPath string, s *Snapshot) {
 
 	finalPath, err := calcFilePath(parentPath, urlPath)
 	if err != nil {
-		LogError("Error saving %s: %w", s.URL, err)
+		logging.LogError("Error saving %s: %w", s.URL, err)
 		return
 	}
 	// Ensure the directory exists
 	dir := filepath.Dir(finalPath)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		LogError("Failed to create directory: %w", err)
+		logging.LogError("Failed to create directory: %w", err)
 		return
 	}
-	err = os.WriteFile(finalPath, []byte((*s).Data), 0666)
-	if err != nil {
-		LogError("Error saving %s: %w", s.URL.Full, err)
+	if s.MimeType.Valid && s.MimeType.String == "text/gemini" {
+		err = os.WriteFile(finalPath, (*s).Data.V, 0666)
+	} else {
+		err = os.WriteFile(finalPath, []byte((*s).GemText.String), 0666)
 	}
+	if err != nil {
+		logging.LogError("Error saving %s: %w", s.URL.Full, err)
+	}
+	close(done)
+}
+
+func ReadLines(path string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to read blacklist file: %s", err))
+	}
+	lines := strings.Split(string(data), "\n")
+	// Remove last line if empty
+	// (happens when file ends with '\n')
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	logging.LogInfo("Loaded %d blacklist URLs", len(lines))
+	return lines
 }

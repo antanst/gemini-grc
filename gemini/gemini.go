@@ -1,12 +1,35 @@
-package main
+package gemini
 
 import (
 	"errors"
 	"fmt"
+	"gemini-grc/logging"
 	"net/url"
+	go_url "net/url"
 	"regexp"
 	"strconv"
+	"strings"
 )
+
+func isGeminiURL(url string) bool {
+	_, err := go_url.Parse(url)
+	if err != nil {
+		logging.LogWarn("[%s] Invalid URL: %v", url, err)
+		return false
+	}
+	return strings.HasPrefix(url, "gemini://")
+}
+
+func parseLinks(s Snapshot, queue chan string) {
+	for _, link := range *s.Links {
+		if strings.HasPrefix(link.Full, "gemini://") {
+			go func(link GeminiUrl) {
+				// fmt.Printf("LINK: %s\n", link)
+				queue <- link.Full
+			}(link)
+		}
+	}
+}
 
 func checkGeminiStatusCode(code int) error {
 	switch {
@@ -29,21 +52,26 @@ func checkGeminiStatusCode(code int) error {
 
 func ProcessGemini(snapshot *Snapshot) *Snapshot {
 	// Grab link lines
-	linkLines := ExtractLinkLines(snapshot.GemText)
-	LogDebug("[%s] Found %d links", snapshot.URL.String(), len(linkLines))
+	linkLines := ExtractLinkLines(snapshot.GemText.String)
+	logging.LogDebug("[%s] Found %d links", snapshot.URL.String(), len(linkLines))
 
 	// Normalize URLs in links, and store them in snapshot
 	for _, line := range linkLines {
 		normalizedLink, descr, error := NormalizeLink(line, snapshot.URL.String())
 		if error != nil {
-			LogError("[%s] Invalid link URL %w", snapshot.URL.String(), error)
+			logging.LogWarn("Cannot normalize URL in line '%s': %v", line, error)
 			continue
 		}
 		geminiUrl, error := ParseUrl(normalizedLink, descr)
 		if error != nil {
-			LogError("[%s] Unparseable gemini link %w", snapshot.URL.String(), error)
+			logging.LogWarn("Cannot parse URL in link '%s': %v", line, error)
+			continue
 		}
-		snapshot.Links = append(snapshot.Links, *geminiUrl)
+		if snapshot.Links == nil {
+			snapshot.Links = &LinkList{*geminiUrl}
+		} else {
+			*snapshot.Links = append(*snapshot.Links, *geminiUrl)
+		}
 	}
 	return snapshot
 }
@@ -85,7 +113,7 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	// Parse the current URL
 	baseURL, err := url.Parse(currentURL)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid current URL: %v", err)
+		return "", "", fmt.Errorf("Invalid current URL: %v", err)
 	}
 
 	// Regular expression to extract the URL part from a link line
@@ -99,7 +127,7 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	}
 
 	originalURLStr := matches[1]
-	decodedURLStr, err := url.QueryUnescape(originalURLStr)
+	_, err = url.QueryUnescape(originalURLStr)
 	if err != nil {
 		return "", "", fmt.Errorf("Error decoding URL: %w", err)
 	}
@@ -110,10 +138,10 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	}
 
 	// Parse the URL from the link line
-	parsedURL, err := url.Parse(decodedURLStr)
+	parsedURL, err := url.Parse(originalURLStr)
 	if err != nil {
 		// If URL parsing fails, return an error
-		return "", "", fmt.Errorf("Invalid URL in link line '%s': %v", decodedURLStr, err)
+		return "", "", fmt.Errorf("Invalid URL '%s': %v", originalURLStr, err)
 	}
 
 	// Resolve relative URLs against the base URL

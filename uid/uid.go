@@ -1,4 +1,4 @@
-package main
+package uid
 
 import (
 	nanoid "github.com/jaevor/go-nanoid"
@@ -6,7 +6,7 @@ import (
 
 func UID() string {
 	// Missing o,O and l
-	uid, err := nanoid.CustomASCII("abcdefghijkmnpqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ0123456789", 18)
+	uid, err := nanoid.CustomASCII("abcdefghijkmnpqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ0123456789", 20)
 	if err != nil {
 		panic(err)
 	}

@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -9,19 +9,23 @@ import (
 )
 
 type Config struct {
-	logLevel        zerolog.Level
+	LogLevel        zerolog.Level
 	rootPath        string
-	numOfWorkers    int
-	maxResponseSize int
-	responseTimeout int
+	MaxResponseSize int
+	NumOfWorkers    int
+	ResponseTimeout int
+	WorkerBatchSize int
 }
 
-func getConfig() *Config {
+var CONFIG Config
+
+func GetConfig() *Config {
 	var config Config
 	for _, envVar := range []string{
 		"LOG_LEVEL",
 		"ROOT_PATH",
 		"NUM_OF_WORKERS",
+		"WORKER_BATCH_SIZE",
 		"MAX_RESPONSE_SIZE",
 		"RESPONSE_TIMEOUT",
 	} {
@@ -37,7 +41,7 @@ func getConfig() *Config {
 						fmt.Fprintf(os.Stderr, "Invalid LOG_LEVEL value\n")
 						os.Exit(1)
 					}
-					config.logLevel = logLevel
+					config.LogLevel = logLevel
 				}
 			case "ROOT_PATH":
 				{
@@ -49,7 +53,16 @@ func getConfig() *Config {
 						fmt.Fprintf(os.Stderr, "Invalid NUM_OF_WORKERS value\n")
 						os.Exit(1)
 					} else {
-						config.numOfWorkers = numOfWorkers
+						config.NumOfWorkers = numOfWorkers
+					}
+				}
+			case "WORKER_BATCH_SIZE":
+				{
+					if workerBatchSize, err := strconv.Atoi(env); err != nil {
+						fmt.Fprintf(os.Stderr, "Invalid WORKER_BATCH_SIZE value\n")
+						os.Exit(1)
+					} else {
+						config.WorkerBatchSize = workerBatchSize
 					}
 				}
 			case "MAX_RESPONSE_SIZE":
@@ -58,7 +71,7 @@ func getConfig() *Config {
 						fmt.Fprintf(os.Stderr, "Invalid MAX_RESPONSE_SIZE value\n")
 						os.Exit(1)
 					} else {
-						config.maxResponseSize = maxResponseSize
+						config.MaxResponseSize = maxResponseSize
 					}
 				}
 			case "RESPONSE_TIMEOUT":
@@ -67,7 +80,7 @@ func getConfig() *Config {
 						fmt.Fprintf(os.Stderr, "Invalid RESPONSE_TIMEOUT value\n")
 						os.Exit(1)
 					} else {
-						config.responseTimeout = val
+						config.ResponseTimeout = val
 					}
 				}
 			}

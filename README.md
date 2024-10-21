@@ -2,21 +2,29 @@
 
 A Gemini crawler.
 
+## Done
+- [x] Concurrent downloading with workers
+- [x] Concurrent connection limit per host
+- [x] URL Blacklist
+- [x] Save image/* and text/* files
+- [x] Configuration via environment variables
+- [x] Storing snapshots in PostgreSQL
+- [x] Proper response header & body UTF-8 and format validation
+
 ## TODO
-- [ ] Save image/* and text/* files
-- [ ] Wide events logging
-- [ ] Handle URLs that need presentation of a TLS cert? Like astrobotany
-  + [ ] Probably have a common "grc" cert for all
+- [ ] Follow robots.txt gemini://geminiprotocol.net/docs/companion/
+  - [ ] Test with gemini://alexey.shpakovsky.ru/maze
+- [ ] Proper handling of all response codes
+  - [ ] Handle 3X redirects properly
+- [ ] Handle URLs that need presentation of a TLS cert, like astrobotany
+  + [ ] Probably have a common "grc" cert for all?
 - [ ] Proper input and response validations:
   + [ ] When making a request, the URI MUST NOT exceed 1024 bytes
-  + [ ] Response headers MUST be UTF-8 encoded text and MUST NOT begin with the Byte Order Mark U+FEFF.
-- [ ] Proper handling of all response codes
-- [ ] Proper validation (or logging) of invalid/expired TLS certs?
-- [ ] Subscribe to gemini pages? gemini://geminiprotocol.net/docs/companion/
-- [ ] Follow robots.txt gemini://geminiprotocol.net/docs/companion/
+- [ ] Subscriptions to gemini pages? gemini://geminiprotocol.net/docs/companion/
 
-## TODO later
+## TODO for later
 - [ ] Add other protocols
+  + [ ] Gopher
   + [ ] Scroll gemini://auragem.letz.dev/devlog/20240316.gmi
   + [ ] Spartan
   + [ ] Nex
