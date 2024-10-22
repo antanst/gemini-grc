@@ -100,7 +100,7 @@ func SaveToFile(rootPath string, s *Snapshot, done chan struct{}) {
 func ReadLines(path string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to read blacklist file: %s", err))
+		panic(fmt.Sprintf("Failed to read file: %s", err))
 	}
 	lines := strings.Split(string(data), "\n")
 	// Remove last line if empty
@@ -108,6 +108,5 @@ func ReadLines(path string) []string {
 	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	logging.LogInfo("Loaded %d blacklist URLs", len(lines))
 	return lines
 }

@@ -1,5 +1,0 @@
-gemini://gemi.dev/cgi-bin/waffle.cgi
-gemini://alexey.shpakovsky.ru/maze
-gemini://kennedy.gemi.dev
-gemini://musicbrainz.uploadedlobster.com
-gemini://gemini.bunburya.eu/remini
