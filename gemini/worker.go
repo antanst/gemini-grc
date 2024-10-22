@@ -47,8 +47,8 @@ func workOnSnapshot(id int, tx *sqlx.Tx, s *Snapshot) (err error) {
 		return nil
 	}
 
-	// If the host's ip is in the pool, stop
-	// and add the url in the queue later.
+	// If the host's ip is in the connections pool,
+	// stop and add the url in the queue later.
 	IpPool.Lock.RLock()
 	logging.LogDebug("[%d] [%s] Checking pool for IP", id, s.URL)
 	for _, ip := range IPs {
@@ -100,6 +100,7 @@ func workOnSnapshot(id int, tx *sqlx.Tx, s *Snapshot) (err error) {
 	return nil
 }
 
+// Should we save the given URL for crawling?
 func shouldPersistURL(tx *sqlx.Tx, u GeminiUrl) bool {
 	if !strings.HasPrefix(u.String(), "gemini://") {
 		return false
@@ -154,12 +155,29 @@ func GetRandomSnapshots(tx *sqlx.Tx) ([]Snapshot, error) {
 }
 
 func GetRandomSnapshotsDistinctHosts(tx *sqlx.Tx) ([]Snapshot, error) {
+	// Old, unoptimized query
+	//
+	// 	query := `
+	//     SELECT DISTINCT ON (host) *
+	//     FROM snapshots
+	//     WHERE response_code IS NULL
+	//       AND error IS NULL
+	//     ORDER BY host, RANDOM()
+	//     LIMIT $1
+	// `
 	query := `
-        SELECT DISTINCT ON (host) *
-        FROM snapshots
-        WHERE response_code IS NULL
-          AND error IS NULL
-        ORDER BY host, RANDOM()
+        WITH RankedSnapshots AS (
+            SELECT id, uid, url, host, timestamp, mimetype, data, gemtext,
+                   links, lang, response_code, error,
+                   ROW_NUMBER() OVER (PARTITION BY host ORDER BY RANDOM()) as rn
+            FROM snapshots
+            WHERE response_code IS NULL
+              AND error IS NULL
+        )
+        SELECT id, uid, url, host, timestamp, mimetype, data, gemtext,
+               links, lang, response_code, error
+        FROM RankedSnapshots
+        WHERE rn = 1
         LIMIT $1
     `
 	var snapshots []Snapshot
@@ -199,7 +217,7 @@ func runWorker(id int, db *sqlx.DB) {
 	total := len(snapshots)
 	for i, s := range snapshots {
 		if InBlacklist(&s) {
-			logging.LogWarn("[%d] Ignoring %d/%d blacklisted URL %s", id, i+1, total, s.URL)
+			logging.LogDebug("[%d] Ignoring %d/%d blacklisted URL %s", id, i+1, total, s.URL)
 		}
 		logging.LogInfo("[%d] Starting %d/%d %s", id, i+1, total, s.URL)
 		err = workOnSnapshot(id, tx, &s)
