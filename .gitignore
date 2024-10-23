@@ -3,6 +3,7 @@
 **/*~
 /cmd
 /db/initdb.sql
+/db/*sh
 /run*.sh
 /gemini-grc
 /snaps

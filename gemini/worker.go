@@ -1,12 +1,11 @@
 package gemini
 
 import (
-	"database/sql"
 	"fmt"
 	"gemini-grc/config"
 	"gemini-grc/logging"
 	"gemini-grc/uid"
-	"runtime/debug"
+	"gemini-grc/util"
 	"strings"
 	"time"
 
@@ -25,17 +24,63 @@ func SpawnWorkers(numOfWorkers int, db *sqlx.DB) {
 	}
 }
 
-func printPoolIPs() {
-	fmt.Printf("%v", IpPool.IPs)
+func runWorker(id int, db *sqlx.DB) {
+	// Start the DB transaction
+	tx, err := db.Beginx()
+	if err != nil {
+		logging.LogError("Failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		err = tx.Commit()
+		if err != nil {
+			logging.LogError("[%d] Failed to commit transaction: %w", id, err)
+			err := tx.Rollback()
+			if err != nil {
+				panic(fmt.Sprintf("[%d] Failed to roll back transaction: %v", id, err))
+			}
+		}
+	}()
+
+	snapshots, err := GetRandomSnapshotsDistinctHosts(tx)
+
+	if err != nil {
+		logging.LogError("[%d] Error retrieving snapshot: %w", id, err)
+		time.Sleep(10 * time.Second)
+		return
+	} else if len(snapshots) == 0 {
+		logging.LogInfo("[%d] No remaining snapshots to visit.", id)
+		time.Sleep(1 * time.Minute)
+		return
+	}
+	total := len(snapshots)
+	for i, s := range snapshots {
+		logging.LogInfo("[%d] Starting %d/%d %s", id, i+1, total, s.URL)
+		err = workOnSnapshot(id, tx, &s)
+		if err != nil {
+			logging.LogError("[%d] [%s] Error %w", id, s.URL, err)
+			util.PrintStackAndPanic(err)
+		}
+		if s.Error.Valid {
+			logging.LogWarn("[%d] [%s] Error: %v", id, s.URL, fmt.Errorf(s.Error.String))
+		}
+		logging.LogDebug("[%d] Done %d/%d.", id, i, total)
+	}
+	logging.LogInfo("[%d] Worker done.", id)
 }
 
 func workOnSnapshot(id int, tx *sqlx.Tx, s *Snapshot) (err error) {
-	// Wrap errors with more info.
-	defer func() {
+	// If URL matches a robots.txt disallow line,
+	// add it as an error so next time it won't be
+	// crawled.
+	if RobotMatch(s) {
+		s.Error = null.StringFrom("robots.txt disallow match")
+		err = SaveSnapshotToDB(tx, s)
 		if err != nil {
-			err = fmt.Errorf("[%d] Worker Error: %w", id, err)
+			return fmt.Errorf("[%d] DB Error: %w", id, err)
 		}
-	}()
+		return nil
+	}
 
 	IPs, err := getHostIPAddresses(s.Host)
 	if err != nil {
@@ -88,22 +133,22 @@ func workOnSnapshot(id int, tx *sqlx.Tx, s *Snapshot) (err error) {
 	if s.Links != nil {
 		var batchSnapshots []*Snapshot
 		timestamp := null.TimeFrom(time.Now())
-		
+
 		for _, link := range *s.Links {
 			if shouldPersistURL(tx, link) {
 				newSnapshot := &Snapshot{
-					UID: uid.UID(),
-					URL: link,
-					Host: link.Hostname,
+					UID:       uid.UID(),
+					URL:       link,
+					Host:      link.Hostname,
 					Timestamp: timestamp,
 				}
 				batchSnapshots = append(batchSnapshots, newSnapshot)
 			}
 		}
-		
+
 		if len(batchSnapshots) > 0 {
 			logging.LogDebug("[%d] Batch saving %d links", id, len(batchSnapshots))
-			err = SaveLinksToDB(tx, batchSnapshots)
+			err = SaveLinksToDBinBatches(tx, batchSnapshots)
 			if err != nil {
 				return fmt.Errorf("[%d] DB Error: %w", id, err)
 			}
@@ -125,45 +170,6 @@ func shouldPersistURL(tx *sqlx.Tx, u GeminiUrl) bool {
 		return false
 	}
 	return !exists
-}
-
-// Select a random snapshot.
-func GetRandomSnapshot(tx *sqlx.Tx) (*Snapshot, error) {
-	query := `SELECT * FROM snapshots
-              WHERE response_code IS NULL
-              AND error IS NULL
-	      ORDER BY RANDOM()
-              LIMIT 1
-              FOR UPDATE SKIP LOCKED`
-	// AND (timestamp < NOW() - INTERVAL '1 day' OR timestamp IS NULL)
-	var snapshot Snapshot
-	err := tx.Get(&snapshot, query)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// Handle the case where no rows were found
-			return nil, nil
-		}
-		// Handle other potential errors
-		return nil, err
-	}
-	return &snapshot, nil
-}
-
-func GetRandomSnapshots(tx *sqlx.Tx) ([]Snapshot, error) {
-	query := `
-        SELECT * FROM snapshots
-        WHERE response_code IS NULL
-          AND error IS NULL
-        ORDER BY RANDOM()
-        LIMIT $1
-        FOR UPDATE SKIP LOCKED
-    `
-	var snapshots []Snapshot
-	err := tx.Select(&snapshots, query, config.CONFIG.WorkerBatchSize)
-	if err != nil {
-		return nil, err
-	}
-	return snapshots, nil
 }
 
 func GetRandomSnapshotsDistinctHosts(tx *sqlx.Tx) ([]Snapshot, error) {
@@ -198,51 +204,4 @@ func GetRandomSnapshotsDistinctHosts(tx *sqlx.Tx) ([]Snapshot, error) {
 		return nil, err
 	}
 	return snapshots, nil
-}
-
-func runWorker(id int, db *sqlx.DB) {
-	// Start the transaction
-	tx, err := db.Beginx()
-	if err != nil {
-		logging.LogError("Failed to begin transaction: %w", err)
-	}
-
-	defer func() {
-		err = tx.Commit()
-		if err != nil {
-			logging.LogError("[%d] Failed to commit transaction: %w", id, err)
-			tx.Rollback()
-		}
-	}()
-
-	snapshots, err := GetRandomSnapshotsDistinctHosts(tx)
-
-	if err != nil {
-		logging.LogError("[%d] Error retrieving snapshot: %w", id, err)
-		time.Sleep(10 * time.Second)
-		return
-	} else if len(snapshots) == 0 {
-		logging.LogInfo("[%d] No remaining snapshots to visit.", id)
-		time.Sleep(1 * time.Minute)
-		return
-	}
-	total := len(snapshots)
-	for i, s := range snapshots {
-		if InBlacklist(&s) {
-			logging.LogDebug("[%d] Ignoring %d/%d blacklisted URL %s", id, i+1, total, s.URL)
-		}
-		logging.LogInfo("[%d] Starting %d/%d %s", id, i+1, total, s.URL)
-		err = workOnSnapshot(id, tx, &s)
-		if err != nil {
-			logging.LogError("[%d] [%s] Error %w", id, s.URL, err)
-			// TODO Remove panic and gracefully handle/log error
-			fmt.Printf("Error %s Stack trace:\n%s", err, debug.Stack())
-			panic("ERROR encountered")
-		}
-		if s.Error.Valid {
-			logging.LogWarn("[%d] [%s] Error: %v", id, s.URL, fmt.Errorf(s.Error.String))
-		}
-		logging.LogDebug("[%d] Done %d/%d.", id, i, total)
-	}
-	logging.LogInfo("[%d] Worker done.", id)
 }

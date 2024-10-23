@@ -42,4 +42,7 @@ CREATE INDEX idx_lang ON snapshots (lang);
 CREATE INDEX idx_response_code ON snapshots (response_code);
 CREATE INDEX idx_error ON snapshots (error);
 CREATE INDEX idx_host ON snapshots (host);
+CREATE INDEX idx_snapshots_unprocessed_no_data ON snapshots (host)
+WHERE response_code IS NULL AND error IS NULL
+INCLUDE (id, uid, url, timestamp, mimetype, gemtext, links, lang);
 CREATE INDEX idx_response_code_error_nulls ON snapshots (response_code, error) WHERE response_code IS NULL AND error IS NULL;

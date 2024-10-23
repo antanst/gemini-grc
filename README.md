@@ -10,10 +10,10 @@ A Gemini crawler.
 - [x] Configuration via environment variables
 - [x] Storing snapshots in PostgreSQL
 - [x] Proper response header & body UTF-8 and format validation
+- [x] Follow robots.txt
 
 ## TODO
-- [ ] Follow robots.txt gemini://geminiprotocol.net/docs/companion/
-  - [ ] Test with gemini://alexey.shpakovsky.ru/maze
+- [ ] Take into account gemini://geminiprotocol.net/docs/companion/robots.gmi
 - [ ] Proper handling of all response codes
   - [ ] Handle 3X redirects properly
 - [ ] Handle URLs that need presentation of a TLS cert, like astrobotany

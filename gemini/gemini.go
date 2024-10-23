@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"gemini-grc/logging"
 	"net/url"
-	go_url "net/url"
+	gourl "net/url"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
 func isGeminiURL(url string) bool {
-	_, err := go_url.Parse(url)
+	_, err := gourl.Parse(url)
 	if err != nil {
 		logging.LogWarn("[%s] Invalid URL: %v", url, err)
 		return false
@@ -36,17 +36,17 @@ func checkGeminiStatusCode(code int) error {
 	case code == 20:
 		return nil
 	case code >= 10 && code < 20:
-		return fmt.Errorf("Gemini response %d needs data input", code)
+		return fmt.Errorf("gemini response %d needs data input", code)
 	case code >= 30 && code < 40:
-		return fmt.Errorf("Gemini response %d redirect", code)
+		return fmt.Errorf("gemini response %d redirect", code)
 	case code >= 40 && code < 50:
-		return fmt.Errorf("Gemini response %d server error", code)
+		return fmt.Errorf("gemini response %d server error", code)
 	case code >= 50 && code < 60:
-		return fmt.Errorf("Gemini response %d server permanent error", code)
+		return fmt.Errorf("gemini response %d server permanent error", code)
 	case code >= 60 && code < 70:
-		return fmt.Errorf("Gemini response %d certificate error", code)
+		return fmt.Errorf("gemini response %d certificate error", code)
 	default:
-		return fmt.Errorf("Unexpected/unhandled Gemini response %d", code)
+		return fmt.Errorf("unexpected/unhandled Gemini response %d", code)
 	}
 }
 
@@ -57,14 +57,14 @@ func ProcessGemini(snapshot *Snapshot) *Snapshot {
 
 	// Normalize URLs in links, and store them in snapshot
 	for _, line := range linkLines {
-		normalizedLink, descr, error := NormalizeLink(line, snapshot.URL.String())
-		if error != nil {
-			logging.LogWarn("Cannot normalize URL in line '%s': %v", line, error)
+		normalizedLink, descr, err := NormalizeLink(line, snapshot.URL.String())
+		if err != nil {
+			logging.LogDebug("Cannot normalize URL in line '%s': %v", line, err)
 			continue
 		}
-		geminiUrl, error := ParseUrl(normalizedLink, descr)
-		if error != nil {
-			logging.LogWarn("Cannot parse URL in link '%s': %v", line, error)
+		geminiUrl, err := ParseUrl(normalizedLink, descr)
+		if err != nil {
+			logging.LogDebug("Cannot parse URL in link '%s': %v", line, err)
 			continue
 		}
 		if snapshot.Links == nil {
@@ -79,18 +79,18 @@ func ProcessGemini(snapshot *Snapshot) *Snapshot {
 func ParseUrl(input string, descr string) (*GeminiUrl, error) {
 	u, err := url.Parse(input)
 	if err != nil {
-		return nil, fmt.Errorf("Error parsing URL %s: %w", input, err)
+		return nil, fmt.Errorf("error parsing URL %s: %w", input, err)
 	}
 	protocol := u.Scheme
 	hostname := u.Hostname()
-	str_port := u.Port()
+	strPort := u.Port()
 	path := u.Path
-	if str_port == "" {
-		str_port = "1965"
+	if strPort == "" {
+		strPort = "1965"
 	}
-	port, err := strconv.Atoi(str_port)
+	port, err := strconv.Atoi(strPort)
 	if err != nil {
-		return nil, fmt.Errorf("Error parsing URL %s: %w", input, err)
+		return nil, fmt.Errorf("error parsing URL %s: %w", input, err)
 	}
 	return &GeminiUrl{Protocol: protocol, Hostname: hostname, Port: port, Path: path, Descr: descr, Full: u.String()}, nil
 }
@@ -106,14 +106,14 @@ func ExtractLinkLines(gemtext string) []string {
 	return matches
 }
 
-// Take a single link line and the current URL,
+// NormalizeLink takes a single link line and the current URL,
 // return the URL converted to an absolute URL
 // and its description.
 func NormalizeLink(linkLine string, currentURL string) (link string, descr string, err error) {
 	// Parse the current URL
 	baseURL, err := url.Parse(currentURL)
 	if err != nil {
-		return "", "", fmt.Errorf("Invalid current URL: %v", err)
+		return "", "", fmt.Errorf("invalid current URL: %v", err)
 	}
 
 	// Regular expression to extract the URL part from a link line
@@ -123,13 +123,13 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	matches := re.FindStringSubmatch(linkLine)
 	if len(matches) == 0 {
 		// If the line doesn't match the expected format, return it unchanged
-		return "", "", fmt.Errorf("Not a link line: %v", linkLine)
+		return "", "", fmt.Errorf("not a link line: %v", linkLine)
 	}
 
 	originalURLStr := matches[1]
 	_, err = url.QueryUnescape(originalURLStr)
 	if err != nil {
-		return "", "", fmt.Errorf("Error decoding URL: %w", err)
+		return "", "", fmt.Errorf("error decoding URL: %w", err)
 	}
 
 	restOfLine := ""
@@ -141,7 +141,7 @@ func NormalizeLink(linkLine string, currentURL string) (link string, descr strin
 	parsedURL, err := url.Parse(originalURLStr)
 	if err != nil {
 		// If URL parsing fails, return an error
-		return "", "", fmt.Errorf("Invalid URL '%s': %v", originalURLStr, err)
+		return "", "", fmt.Errorf("invalid URL '%s': %v", originalURLStr, err)
 	}
 
 	// Resolve relative URLs against the base URL
