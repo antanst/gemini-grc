@@ -57,16 +57,16 @@ func SaveSnapshotToDB(tx *sqlx.Tx, s *Snapshot) error {
 	return nil
 }
 
-func SaveLinkToDB(tx *sqlx.Tx, s *Snapshot) error {
+func SaveLinksToDB(tx *sqlx.Tx, snapshots []*Snapshot) error {
 	query := `
         INSERT INTO snapshots (uid, url, host, timestamp, mimetype, data, gemtext, links, lang, response_code, error)
         VALUES (:uid, :url, :host, :timestamp, :mimetype, :data, :gemtext, :links, :lang, :response_code, :error)
         ON CONFLICT (uid) DO NOTHING
     `
-	_, err := tx.NamedExec(query, s)
+	_, err := tx.NamedExec(query, snapshots)
 	if err != nil {
-		logging.LogError("[%s] [%s] Error upserting snapshot: %w", s.URL, s.MimeType.String, err)
-		return fmt.Errorf("DB error: %w", err) // Return the error instead of panicking
+		logging.LogError("Error batch inserting snapshots: %w", err)
+		return fmt.Errorf("DB error: %w", err)
 	}
 	return nil
 }

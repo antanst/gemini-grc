@@ -84,16 +84,28 @@ func workOnSnapshot(id int, tx *sqlx.Tx, s *Snapshot) (err error) {
 		return fmt.Errorf("[%d] DB Error: %w", id, err)
 	}
 
-	// Store links
+	// Store links in batch
 	if s.Links != nil {
+		var batchSnapshots []*Snapshot
+		timestamp := null.TimeFrom(time.Now())
+		
 		for _, link := range *s.Links {
-			newSnapshot := Snapshot{UID: uid.UID(), URL: link, Host: link.Hostname, Timestamp: null.TimeFrom(time.Now())}
 			if shouldPersistURL(tx, link) {
-				logging.LogDebug("[%d] Saving link %s", id, link)
-				err = SaveLinkToDB(tx, &newSnapshot)
-				if err != nil {
-					return fmt.Errorf("[%d] DB Error: %w", id, err)
+				newSnapshot := &Snapshot{
+					UID: uid.UID(),
+					URL: link,
+					Host: link.Hostname,
+					Timestamp: timestamp,
 				}
+				batchSnapshots = append(batchSnapshots, newSnapshot)
+			}
+		}
+		
+		if len(batchSnapshots) > 0 {
+			logging.LogDebug("[%d] Batch saving %d links", id, len(batchSnapshots))
+			err = SaveLinksToDB(tx, batchSnapshots)
+			if err != nil {
+				return fmt.Errorf("[%d] DB Error: %w", id, err)
 			}
 		}
 	}
