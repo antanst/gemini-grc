@@ -6,6 +6,7 @@ import (
 	"gemini-grc/config"
 	"io"
 	"net"
+	go_url "net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -13,6 +14,14 @@ import (
 
 	"github.com/guregu/null/v5"
 )
+
+type GeminiPageData struct {
+	ResponseCode int
+	MimeType     string
+	Lang         string
+	GemText      string
+	Data         []byte
+}
 
 // Resolve the URL hostname and
 // check if we already have an open
@@ -31,51 +40,53 @@ func getHostIPAddresses(hostname string) ([]string, error) {
 	return addrs, nil
 }
 
-// Connect to given URL, using the Gemini protocol.
-// Return a Snapshot with the data or the error.
-// Any errors are stored within the snapshot.
-func Visit(s *Snapshot) {
+func ConnectAndGetData(url string) ([]byte, error) {
+	parsedUrl, err := go_url.Parse(url)
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse URL, error %w", err)
+	}
+	host := parsedUrl.Host
+	port := parsedUrl.Port()
+	if port == "" {
+		port = "1965"
+		host = fmt.Sprintf("%s:%s", host, port)
+	}
 	// Establish the underlying TCP connection.
-	host := fmt.Sprintf("%s:%d", s.Host, s.URL.Port)
 	dialer := &net.Dialer{
-		Timeout:   time.Duration(config.CONFIG.ResponseTimeout) * time.Second, // Set the overall connection timeout
-		KeepAlive: 30 * time.Second,
+		Timeout:   time.Duration(config.CONFIG.ResponseTimeout) * time.Second,
+		KeepAlive: 10 * time.Second,
 	}
 	conn, err := dialer.Dial("tcp", host)
 	if err != nil {
-		s.Error = null.StringFrom(fmt.Sprintf("TCP connection failed: %v", err))
-		return
+		return nil, fmt.Errorf("TCP connection failed: %w", err)
 	}
 	// Make sure we always close the connection.
 	defer func() {
 		err := conn.Close()
 		if err != nil {
-			s.Error = null.StringFrom(fmt.Sprintf("Error closing connection: %s", err))
+			// Do nothing! Connection will timeout eventually if still open somehow.
 		}
 	}()
 
 	// Set read and write timeouts on the TCP connection.
 	err = conn.SetReadDeadline(time.Now().Add(time.Duration(config.CONFIG.ResponseTimeout) * time.Second))
 	if err != nil {
-		s.Error = null.StringFrom(fmt.Sprintf("Error setting connection deadline: %s", err))
-		return
+		return nil, fmt.Errorf("Error setting connection deadline: %w", err)
 	}
 	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(config.CONFIG.ResponseTimeout) * time.Second))
 	if err != nil {
-		s.Error = null.StringFrom(fmt.Sprintf("Error setting connection deadline: %s", err))
-		return
+		return nil, fmt.Errorf("Error setting connection deadline: %w", err)
 	}
 
 	// Perform the TLS handshake
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,           // Accept all TLS certs, even if insecure.
-		ServerName:         s.URL.Hostname, // SNI
+		ServerName:         parsedUrl.Host, // SNI
 		// MinVersion:         tls.VersionTLS12, // Use a minimum TLS version. Warning breaks a lot of sites.
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
-		s.Error = null.StringFrom(fmt.Sprintf("TLS handshake error: %v", err))
-		return
+		return nil, fmt.Errorf("TLS handshake error: %w", err)
 	}
 
 	// We read `buf`-sized chunks and add data to `data`.
@@ -83,10 +94,9 @@ func Visit(s *Snapshot) {
 	var data []byte
 
 	// Send Gemini request to trigger server response.
-	_, err = tlsConn.Write([]byte(fmt.Sprintf("%s\r\n", s.URL.String())))
+	_, err = tlsConn.Write([]byte(fmt.Sprintf("%s\r\n", url)))
 	if err != nil {
-		s.Error = null.StringFrom(fmt.Sprintf("Error sending network request: %s", err))
-		return
+		return nil, fmt.Errorf("Error sending network request: %w", err)
 	}
 	// Read response bytes in len(buf) byte chunks
 	for {
@@ -96,21 +106,40 @@ func Visit(s *Snapshot) {
 		}
 		if len(data) > config.CONFIG.MaxResponseSize {
 			data = []byte{}
-			s.Error = null.StringFrom(fmt.Sprintf("Response size exceeded maximum of %d bytes", config.CONFIG.MaxResponseSize))
+			return nil, fmt.Errorf("Response size exceeded maximum of %d bytes", config.CONFIG.MaxResponseSize)
 		}
 		if err != nil {
 			if err == io.EOF {
 				break
 			} else {
-				s.Error = null.StringFrom(fmt.Sprintf("Network error: %s", err))
-				return
+				return nil, fmt.Errorf("Network error: %s", err)
 			}
 		}
 	}
-	// Great, response data received.
-	err = processResponse(s, data)
+	return data, nil
+}
+
+// Connect to given URL, using the Gemini protocol.
+// Mutate given Snapshot with the data or the error.
+func Visit(s *Snapshot) {
+	data, err := ConnectAndGetData(s.URL.String())
 	if err != nil {
 		s.Error = null.StringFrom(err.Error())
+		return
+	}
+	pageData, err := processData(data)
+	if err != nil {
+		s.Error = null.StringFrom(err.Error())
+		return
+	}
+	s.ResponseCode = null.IntFrom(int64(pageData.ResponseCode))
+	s.MimeType = null.StringFrom(pageData.MimeType)
+	s.Lang = null.StringFrom(pageData.Lang)
+	if pageData.GemText != "" {
+		s.GemText = null.StringFrom(string(pageData.GemText))
+	}
+	if pageData.Data != nil {
+		s.Data = null.ValueFrom(pageData.Data)
 	}
 	return
 }
@@ -118,31 +147,33 @@ func Visit(s *Snapshot) {
 // Update given snapshot with the
 // Gemini header data: response code,
 // mime type and lang (optional)
-func processResponse(snapshot *Snapshot, data []byte) error {
+func processData(data []byte) (*GeminiPageData, error) {
 	headers, body, err := getHeadersAndData(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	code, mimeType, lang := getMimeTypeAndLang(headers)
 	geminiError := checkGeminiStatusCode(code)
 	if geminiError != nil {
-		return geminiError
+		return nil, geminiError
 	}
-	snapshot.ResponseCode = null.IntFrom(int64(code))
-	snapshot.MimeType = null.StringFrom(mimeType)
-	snapshot.Lang = null.StringFrom(lang)
+	pageData := GeminiPageData{
+		ResponseCode: code,
+		MimeType:     mimeType,
+		Lang:         lang,
+	}
 	// If we've got a Gemini document, populate
 	// `GemText` field, otherwise raw data goes to `Data`.
 	if mimeType == "text/gemini" {
 		validBody, err := EnsureValidUTF8(body)
 		if err != nil {
-			return fmt.Errorf("UTF-8 error: %w", err)
+			return nil, fmt.Errorf("UTF-8 error: %w", err)
 		}
-		snapshot.GemText = null.StringFrom(string(validBody))
+		pageData.GemText = validBody
 	} else {
-		snapshot.Data = null.ValueFrom(body)
+		pageData.Data = body
 	}
-	return nil
+	return &pageData, nil
 }
 
 // Checks for a Gemini header, which is
