@@ -45,12 +45,12 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse URL, error %w", err)
 	}
-	host := parsedUrl.Host
+	hostname := parsedUrl.Hostname()
 	port := parsedUrl.Port()
 	if port == "" {
 		port = "1965"
-		host = fmt.Sprintf("%s:%s", host, port)
 	}
+	host := fmt.Sprintf("%s:%s", hostname, port)
 	// Establish the underlying TCP connection.
 	dialer := &net.Dialer{
 		Timeout:   time.Duration(config.CONFIG.ResponseTimeout) * time.Second,
