@@ -80,8 +80,8 @@ func ConnectAndGetData(url string) ([]byte, error) {
 
 	// Perform the TLS handshake
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,           // Accept all TLS certs, even if insecure.
-		ServerName:         parsedUrl.Host, // SNI
+		InsecureSkipVerify: true,              // Accept all TLS certs, even if insecure.
+		ServerName:         parsedUrl.Hostname(), // SNI should not include port
 		// MinVersion:         tls.VersionTLS12, // Use a minimum TLS version. Warning breaks a lot of sites.
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
