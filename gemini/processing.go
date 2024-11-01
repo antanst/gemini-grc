@@ -20,6 +20,7 @@ func EnsureValidUTF8(input []byte) (string, error) {
 			charmap.Windows1252.NewDecoder(), // Then try Windows-1252, etc
 			// TODO: Try more encodings?
 		}
+		// First successful conversion wins
 		for _, encoding := range encodings {
 			reader := transform.NewReader(bytes.NewReader(inputNoNull), encoding)
 			result, err := io.ReadAll(reader)

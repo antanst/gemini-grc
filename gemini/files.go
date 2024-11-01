@@ -67,7 +67,7 @@ func SaveToFile(rootPath string, s *Snapshot, done chan struct{}) {
 	urlPath := s.URL.Path
 	// If path is empty, add `index.gmi` as the file to save
 	if urlPath == "" || urlPath == "." {
-		urlPath = fmt.Sprintf("index.gmi")
+		urlPath = "index.gmi"
 	}
 	// If path ends with '/' then add index.gmi for the
 	// directory to be created.

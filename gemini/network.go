@@ -62,10 +62,9 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	}
 	// Make sure we always close the connection.
 	defer func() {
-		err := conn.Close()
-		if err != nil {
-			// Do nothing! Connection will timeout eventually if still open somehow.
-		}
+		// No need to handle error:
+		// Connection will timeout eventually if still open somehow.
+		conn.Close()
 	}()
 
 	// Set read and write timeouts on the TCP connection.
@@ -80,7 +79,7 @@ func ConnectAndGetData(url string) ([]byte, error) {
 
 	// Perform the TLS handshake
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,              // Accept all TLS certs, even if insecure.
+		InsecureSkipVerify: true,                 // Accept all TLS certs, even if insecure.
 		ServerName:         parsedUrl.Hostname(), // SNI should not include port
 		// MinVersion:         tls.VersionTLS12, // Use a minimum TLS version. Warning breaks a lot of sites.
 	}
@@ -141,7 +140,6 @@ func Visit(s *Snapshot) {
 	if pageData.Data != nil {
 		s.Data = null.ValueFrom(pageData.Data)
 	}
-	return
 }
 
 // Update given snapshot with the

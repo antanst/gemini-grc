@@ -5,31 +5,9 @@ import (
 	"fmt"
 	"gemini-grc/logging"
 	"net/url"
-	gourl "net/url"
 	"regexp"
 	"strconv"
-	"strings"
 )
-
-func isGeminiURL(url string) bool {
-	_, err := gourl.Parse(url)
-	if err != nil {
-		logging.LogWarn("[%s] Invalid URL: %v", url, err)
-		return false
-	}
-	return strings.HasPrefix(url, "gemini://")
-}
-
-func parseLinks(s Snapshot, queue chan string) {
-	for _, link := range *s.Links {
-		if strings.HasPrefix(link.Full, "gemini://") {
-			go func(link GeminiUrl) {
-				// fmt.Printf("LINK: %s\n", link)
-				queue <- link.Full
-			}(link)
-		}
-	}
-}
 
 func checkGeminiStatusCode(code int) error {
 	switch {

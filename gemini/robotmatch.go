@@ -57,7 +57,7 @@ func RobotMatch(s *Snapshot) bool {
 	logging.LogDebug("Checking robots.txt cache for %s", s.URL.String())
 	key := fmt.Sprintf("%s:%d", s.Host, s.URL.Port)
 	v, ok := RobotsCache.Load(key)
-	if ok == false {
+	if !ok {
 		// First time check, populate robot cache
 		logging.LogDebug("No robots.txt entry, populating cache for %s", s.URL.String())
 		disallowedURLs := populateBlacklist(key)

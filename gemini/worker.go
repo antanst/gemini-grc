@@ -58,11 +58,11 @@ func runWorker(id int, db *sqlx.DB) {
 		logging.LogInfo("[%d] Starting %d/%d %s", id, i+1, total, s.URL)
 		err = workOnSnapshot(id, tx, &s)
 		if err != nil {
-			logging.LogError("[%d] [%s] Error %w", id, s.URL, err)
+			logging.LogError("[%d] [%s] Unexpected Error %w", id, s.URL, err)
 			util.PrintStackAndPanic(err)
 		}
 		if s.Error.Valid {
-			logging.LogWarn("[%d] [%s] Error: %v", id, s.URL, fmt.Errorf(s.Error.String))
+			logging.LogWarn("[%d] [%s] Worker Error: %v", id, s.URL, s.Error.String)
 		}
 		logging.LogDebug("[%d] Done %d/%d.", id, i, total)
 	}

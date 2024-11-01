@@ -44,6 +44,10 @@ func runApp() error {
 		}
 	}(db)
 
+	// if len(os.Args) > 1 {
+	// 	url := os.Args[1]
+	// }
+	// os.Exit(1)
 	go gemini.SpawnWorkers(config.CONFIG.NumOfWorkers, db)
 
 	<-sigs
