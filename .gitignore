@@ -1,0 +1,9 @@
+.idea
+.goroot
+**/.#*
+**/*~
+/.go
+/cmd
+/db/initdb.sql
+/gemini-grc
+run*.sh
