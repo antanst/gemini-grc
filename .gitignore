@@ -7,3 +7,4 @@
 /db/initdb.sql
 /gemini-grc
 run*.sh
+/main
