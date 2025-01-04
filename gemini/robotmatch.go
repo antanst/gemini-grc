@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"fmt"
+	"gemini-grc/common"
 	"strings"
 	"sync"
 
@@ -56,7 +57,11 @@ func populateBlacklist(key string) (entries []string) {
 
 // RobotMatch checks if the snapshot URL matches
 // a robots.txt allow rule.
-func RobotMatch(url URL) bool {
+func RobotMatch(u string) bool {
+	url, err := common.ParseURL(u, "")
+	if err != nil {
+		return false
+	}
 	key := strings.ToLower(fmt.Sprintf("%s:%d", url.Hostname, url.Port))
 	logging.LogDebug("Checking robots.txt cache for %s", key)
 	var disallowedURLs []string

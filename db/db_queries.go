@@ -1,4 +1,4 @@
-package gemini
+package db
 
 const (
 	SQL_SELECT_RANDOM_UNVISITED_SNAPSHOTS = `
@@ -10,6 +10,16 @@ ORDER BY RANDOM()
 FOR UPDATE SKIP LOCKED
 LIMIT $1
 	`
+	SQL_SELECT_RANDOM_URLS_UNIQUE_HOSTS = `
+SELECT url
+FROM urls u
+WHERE u.id IN (
+      SELECT MIN(id)
+      FROM urls
+      GROUP BY host
+)
+LIMIT $1
+`
 	SQL_SELECT_RANDOM_UNVISITED_SNAPSHOTS_UNIQUE_HOSTS = `
 SELECT *
 FROM snapshots s
@@ -75,4 +85,9 @@ error = :error
 WHERE id = :id
 RETURNING id
 `
+	SQL_INSERT_URL = `
+        INSERT INTO urls (url, host, timestamp)
+        VALUES (:url, :host, :timestamp)
+        ON CONFLICT (url) DO NOTHING
+    `
 )

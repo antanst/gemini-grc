@@ -1,4 +1,4 @@
-package gemini
+package common
 
 import (
 	"errors"

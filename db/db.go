@@ -1,9 +1,10 @@
-package gemini
+package db
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gemini-grc/common"
 	"os"
 	"strconv"
 
@@ -43,8 +44,8 @@ func ConnectToDB() *sqlx.DB {
 	return db
 }
 
-// isDeadlockError checks if the error is a PostgreSQL deadlock error
-func isDeadlockError(err error) bool {
+// IsDeadlockError checks if the error is a PostgreSQL deadlock error
+func IsDeadlockError(err error) bool {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
 		return pqErr.Code == "40P01" // PostgreSQL deadlock error code
@@ -52,16 +53,25 @@ func isDeadlockError(err error) bool {
 	return false
 }
 
-func GetSnapshotsToVisit(tx *sqlx.Tx) ([]Snapshot, error) {
-	var snapshots []Snapshot
-	err := tx.Select(&snapshots, SQL_SELECT_UNVISITED_SNAPSHOTS_UNIQUE_HOSTS, config.CONFIG.WorkerBatchSize)
+func GetURLsToVisit(tx *sqlx.Tx) ([]string, error) {
+	var urls []string
+	err := tx.Select(&urls, SQL_SELECT_RANDOM_URLS_UNIQUE_HOSTS, config.CONFIG.WorkerBatchSize)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrDatabase, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrDatabase, err)
 	}
-	return snapshots, nil
+	return urls, nil
 }
 
-func SaveSnapshotIfNew(tx *sqlx.Tx, s *Snapshot) error {
+func InsertURL(tx *sqlx.Tx, url string) error {
+	query := SQL_INSERT_URL
+	_, err := tx.NamedExec(query, url)
+	if err != nil {
+		return fmt.Errorf("%w inserting URL: %w", common.ErrDatabase, err)
+	}
+	return nil
+}
+
+func SaveSnapshotIfNew(tx *sqlx.Tx, s *common.Snapshot) error {
 	if config.CONFIG.DryRun {
 		marshalled, err := json.MarshalIndent(s, "", "  ")
 		if err != nil {
@@ -78,7 +88,7 @@ func SaveSnapshotIfNew(tx *sqlx.Tx, s *Snapshot) error {
 	return nil
 }
 
-func UpsertSnapshot(workedID int, tx *sqlx.Tx, s *Snapshot) (err error) {
+func OverwriteSnapshot(workedID int, tx *sqlx.Tx, s *common.Snapshot) (err error) {
 	//	if config.CONFIG.DryRun {
 	//marshalled, err := json.MarshalIndent(s, "", "  ")
 	//if err != nil {
@@ -90,19 +100,19 @@ func UpsertSnapshot(workedID int, tx *sqlx.Tx, s *Snapshot) (err error) {
 	query := SQL_UPSERT_SNAPSHOT
 	rows, err := tx.NamedQuery(query, s)
 	if err != nil {
-		return fmt.Errorf("[%d] %w while upserting snapshot: %w", workedID, ErrDatabase, err)
+		return fmt.Errorf("[%d] %w while upserting snapshot: %w", workedID, common.ErrDatabase, err)
 	}
 	defer func() {
 		_err := rows.Close()
 		if _err != nil {
-			err = fmt.Errorf("[%d] %w error closing rows: %w", workedID, ErrDatabase, _err)
+			err = fmt.Errorf("[%d] %w error closing rows: %w", workedID, common.ErrDatabase, _err)
 		}
 	}()
 	if rows.Next() {
 		var returnedID int
 		err = rows.Scan(&returnedID)
 		if err != nil {
-			return fmt.Errorf("[%d] %w error scanning returned id: %w", workedID, ErrDatabase, err)
+			return fmt.Errorf("[%d] %w error scanning returned id: %w", workedID, common.ErrDatabase, err)
 		}
 		s.ID = returnedID
 		// logging.LogDebug("[%d] Upserted snapshot with ID %d", workedID, returnedID)
@@ -110,7 +120,7 @@ func UpsertSnapshot(workedID int, tx *sqlx.Tx, s *Snapshot) (err error) {
 	return nil
 }
 
-func UpdateSnapshot(workedID int, tx *sqlx.Tx, s *Snapshot) (err error) {
+func UpdateSnapshot(workedID int, tx *sqlx.Tx, s *common.Snapshot) (err error) {
 	//	if config.CONFIG.DryRun {
 	//marshalled, err := json.MarshalIndent(s, "", "  ")
 	//if err != nil {
@@ -122,19 +132,19 @@ func UpdateSnapshot(workedID int, tx *sqlx.Tx, s *Snapshot) (err error) {
 	query := SQL_UPDATE_SNAPSHOT
 	rows, err := tx.NamedQuery(query, s)
 	if err != nil {
-		return fmt.Errorf("[%d] %w while updating snapshot: %w", workedID, ErrDatabase, err)
+		return fmt.Errorf("[%d] %w while updating snapshot: %w", workedID, common.ErrDatabase, err)
 	}
 	defer func() {
 		_err := rows.Close()
 		if _err != nil {
-			err = fmt.Errorf("[%d] %w error closing rows: %w", workedID, ErrDatabase, _err)
+			err = fmt.Errorf("[%d] %w error closing rows: %w", workedID, common.ErrDatabase, _err)
 		}
 	}()
 	if rows.Next() {
 		var returnedID int
 		err = rows.Scan(&returnedID)
 		if err != nil {
-			return fmt.Errorf("[%d] %w error scanning returned id: %w", workedID, ErrDatabase, err)
+			return fmt.Errorf("[%d] %w error scanning returned id: %w", workedID, common.ErrDatabase, err)
 		}
 		s.ID = returnedID
 		// logging.LogDebug("[%d] Updated snapshot with ID %d", workedID, returnedID)
@@ -142,7 +152,7 @@ func UpdateSnapshot(workedID int, tx *sqlx.Tx, s *Snapshot) (err error) {
 	return nil
 }
 
-func SaveLinksToDBinBatches(tx *sqlx.Tx, snapshots []*Snapshot) error {
+func SaveLinksToDBinBatches(tx *sqlx.Tx, snapshots []*common.Snapshot) error {
 	if config.CONFIG.DryRun {
 		return nil
 	}
@@ -156,13 +166,13 @@ func SaveLinksToDBinBatches(tx *sqlx.Tx, snapshots []*Snapshot) error {
 		batch := snapshots[i:end]
 		_, err := tx.NamedExec(query, batch)
 		if err != nil {
-			return fmt.Errorf("%w: While saving links in batches: %w", ErrDatabase, err)
+			return fmt.Errorf("%w: While saving links in batches: %w", common.ErrDatabase, err)
 		}
 	}
 	return nil
 }
 
-func SaveLinksToDB(tx *sqlx.Tx, snapshots []*Snapshot) error {
+func SaveLinksToDB(tx *sqlx.Tx, snapshots []*common.Snapshot) error {
 	if config.CONFIG.DryRun {
 		return nil
 	}

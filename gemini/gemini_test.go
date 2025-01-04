@@ -1,10 +1,13 @@
 package gemini
 
-import "testing"
+import (
+	"gemini-grc/common"
+	"testing"
+)
 
 func TestExtractRedirectTargetFullURL(t *testing.T) {
 	t.Parallel()
-	currentURL, _ := ParseURL("gemini://smol.gr", "")
+	currentURL, _ := common.ParseURL("gemini://smol.gr", "")
 	input := "redirect: 31 gemini://target.gr"
 	result, err := extractRedirectTarget(*currentURL, input)
 	expected := "gemini://target.gr:1965"
@@ -15,7 +18,7 @@ func TestExtractRedirectTargetFullURL(t *testing.T) {
 
 func TestExtractRedirectTargetFullURLSlash(t *testing.T) {
 	t.Parallel()
-	currentURL, _ := ParseURL("gemini://smol.gr", "")
+	currentURL, _ := common.ParseURL("gemini://smol.gr", "")
 	input := "redirect: 31 gemini://target.gr/"
 	result, err := extractRedirectTarget(*currentURL, input)
 	expected := "gemini://target.gr:1965/"
@@ -26,7 +29,7 @@ func TestExtractRedirectTargetFullURLSlash(t *testing.T) {
 
 func TestExtractRedirectTargetRelativeURL(t *testing.T) {
 	t.Parallel()
-	currentURL, _ := ParseURL("gemini://smol.gr", "")
+	currentURL, _ := common.ParseURL("gemini://smol.gr", "")
 	input := "redirect: 31 /a/b"
 	result, err := extractRedirectTarget(*currentURL, input)
 	if err != nil || (result.String() != "gemini://smol.gr:1965/a/b") {
@@ -36,7 +39,7 @@ func TestExtractRedirectTargetRelativeURL(t *testing.T) {
 
 func TestExtractRedirectTargetRelativeURL2(t *testing.T) {
 	t.Parallel()
-	currentURL, _ := ParseURL("gemini://nox.im:1965", "")
+	currentURL, _ := common.ParseURL("gemini://nox.im:1965", "")
 	input := "redirect: 31 ./"
 	result, err := extractRedirectTarget(*currentURL, input)
 	if err != nil || (result.String() != "gemini://nox.im:1965/") {
@@ -46,7 +49,7 @@ func TestExtractRedirectTargetRelativeURL2(t *testing.T) {
 
 func TestExtractRedirectTargetRelativeURL3(t *testing.T) {
 	t.Parallel()
-	currentURL, _ := ParseURL("gemini://status.zvava.org:1965", "")
+	currentURL, _ := common.ParseURL("gemini://status.zvava.org:1965", "")
 	input := "redirect: 31 index.gmi"
 	result, err := extractRedirectTarget(*currentURL, input)
 	if err != nil || (result.String() != "gemini://status.zvava.org:1965/index.gmi") {
@@ -56,7 +59,7 @@ func TestExtractRedirectTargetRelativeURL3(t *testing.T) {
 
 func TestExtractRedirectTargetWrong(t *testing.T) {
 	t.Parallel()
-	currentURL, _ := ParseURL("gemini://smol.gr", "")
+	currentURL, _ := common.ParseURL("gemini://smol.gr", "")
 	input := "redirect: 31"
 	result, err := extractRedirectTarget(*currentURL, input)
 	if result != nil || err == nil {

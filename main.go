@@ -1,6 +1,7 @@
 package main
 
 import (
+	main2 "gemini-grc/db"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,11 +30,7 @@ func runApp() error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	db := gemini.ConnectToDB()
-
-	// !!! DANGER !!!
-	// Removes all rows and adds some seed URLs.
-	// populateDB(db)
+	db := main2.ConnectToDB()
 
 	defer func(db *sqlx.DB) {
 		err := db.Close()

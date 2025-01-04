@@ -1,9 +1,10 @@
-package gemini
+package common
 
 import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/guregu/null/v5"
 )
@@ -39,4 +40,17 @@ type Snapshot struct {
 	Lang         null.String          `db:"lang" json:"lang,omitempty"`
 	ResponseCode null.Int             `db:"response_code" json:"code,omitempty"` // Gemini response status code.
 	Error        null.String          `db:"error" json:"error,omitempty"`        // On network errors only
+}
+
+func SnapshotFromURL(u string) *Snapshot {
+	url, err := ParseURL(u, "")
+	if err != nil {
+		return nil
+	}
+	newSnapshot := Snapshot{
+		URL:       *url,
+		Host:      url.Hostname,
+		Timestamp: null.TimeFrom(time.Now()),
+	}
+	return &newSnapshot
 }

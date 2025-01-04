@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"gemini-grc/common"
 	"io"
 	"net"
 	gourl "net/url"
@@ -35,7 +36,7 @@ type PageData struct {
 func getHostIPAddresses(hostname string) ([]string, error) {
 	addrs, err := net.LookupHost(hostname)
 	if err != nil {
-		return nil, fmt.Errorf("%w:%w", ErrNetworkDNS, err)
+		return nil, fmt.Errorf("%w:%w", common.ErrNetworkDNS, err)
 	}
 	IPPool.Lock.RLock()
 	defer func() {
@@ -47,7 +48,7 @@ func getHostIPAddresses(hostname string) ([]string, error) {
 func ConnectAndGetData(url string) ([]byte, error) {
 	parsedURL, err := gourl.Parse(url)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrURLParse, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrURLParse, err)
 	}
 	hostname := parsedURL.Hostname()
 	port := parsedURL.Port()
@@ -61,7 +62,7 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	}
 	conn, err := dialer.Dial("tcp", host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNetwork, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrNetwork, err)
 	}
 	// Make sure we always close the connection.
 	defer func() {
@@ -73,11 +74,11 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	// Set read and write timeouts on the TCP connection.
 	err = conn.SetReadDeadline(time.Now().Add(time.Duration(config.CONFIG.ResponseTimeout) * time.Second))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNetworkSetConnectionDeadline, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrNetworkSetConnectionDeadline, err)
 	}
 	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(config.CONFIG.ResponseTimeout) * time.Second))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNetworkSetConnectionDeadline, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrNetworkSetConnectionDeadline, err)
 	}
 
 	// Perform the TLS handshake
@@ -88,7 +89,7 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNetworkTLS, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrNetworkTLS, err)
 	}
 
 	// We read `buf`-sized chunks and add data to `data`.
@@ -99,10 +100,10 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	// Fix for stupid server bug:
 	// Some servers return 'Header: 53 No proxying to other hosts or ports!'
 	// when the port is 1965 and is still specified explicitly in the URL.
-	_url, _ := ParseURL(url, "")
+	_url, _ := common.ParseURL(url, "")
 	_, err = tlsConn.Write([]byte(fmt.Sprintf("%s\r\n", _url.StringNoDefaultPort())))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNetworkCannotWrite, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrNetworkCannotWrite, err)
 	}
 	// Read response bytes in len(buf) byte chunks
 	for {
@@ -111,13 +112,13 @@ func ConnectAndGetData(url string) ([]byte, error) {
 			data = append(data, buf[:n]...)
 		}
 		if len(data) > config.CONFIG.MaxResponseSize {
-			return nil, fmt.Errorf("%w: %v", ErrNetworkResponseSizeExceededMax, config.CONFIG.MaxResponseSize)
+			return nil, fmt.Errorf("%w: %v", common.ErrNetworkResponseSizeExceededMax, config.CONFIG.MaxResponseSize)
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, fmt.Errorf("%w: %w", ErrNetwork, err)
+			return nil, fmt.Errorf("%w: %w", common.ErrNetwork, err)
 		}
 	}
 	return data, nil
@@ -127,16 +128,16 @@ func ConnectAndGetData(url string) ([]byte, error) {
 // Mutates given Snapshot with the data.
 // In case of error, we store the error string
 // inside snapshot and return the error.
-func Visit(s *Snapshot) (err error) {
+func Visit(s *common.Snapshot) (err error) {
 	// Don't forget to also store error
 	// response code (if we have one)
 	// and header
 	defer func() {
 		if err != nil {
 			s.Error = null.StringFrom(err.Error())
-			if errors.As(err, new(*GeminiError)) {
-				s.Header = null.StringFrom(err.(*GeminiError).Header)
-				s.ResponseCode = null.IntFrom(int64(err.(*GeminiError).Code))
+			if errors.As(err, new(*common.GeminiError)) {
+				s.Header = null.StringFrom(err.(*common.GeminiError).Header)
+				s.ResponseCode = null.IntFrom(int64(err.(*common.GeminiError).Code))
 			}
 		}
 	}()
@@ -174,7 +175,7 @@ func processData(data []byte) (*PageData, error) {
 	code, mimeType, lang := getMimeTypeAndLang(header)
 	logging.LogDebug("Header: %s", strings.TrimSpace(header))
 	if code != 20 {
-		return nil, NewErrGeminiStatusCode(code, header)
+		return nil, common.NewErrGeminiStatusCode(code, header)
 	}
 
 	pageData := PageData{
@@ -188,7 +189,7 @@ func processData(data []byte) (*PageData, error) {
 	if mimeType == "text/gemini" {
 		validBody, err := BytesToValidUTF8(body)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrUTF8Parse, err)
+			return nil, fmt.Errorf("%w: %w", common.ErrUTF8Parse, err)
 		}
 		pageData.GemText = validBody
 	} else {
@@ -204,7 +205,7 @@ func processData(data []byte) (*PageData, error) {
 func getHeadersAndData(data []byte) (string, []byte, error) {
 	firstLineEnds := slices.Index(data, '\n')
 	if firstLineEnds == -1 {
-		return "", nil, ErrGeminiResponseHeader
+		return "", nil, common.ErrGeminiResponseHeader
 	}
 	firstLine := string(data[:firstLineEnds])
 	rest := data[firstLineEnds+1:]

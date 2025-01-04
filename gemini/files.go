@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"fmt"
+	"gemini-grc/common"
 	"net/url"
 	"os"
 	"path"
@@ -63,7 +64,7 @@ func calcFilePath(rootPath, urlPath string) (string, error) {
 	return finalPath, nil
 }
 
-func SaveToFile(rootPath string, s *Snapshot, done chan struct{}) {
+func SaveToFile(rootPath string, s *common.Snapshot, done chan struct{}) {
 	parentPath := path.Join(rootPath, s.URL.Hostname)
 	urlPath := s.URL.Path
 	// If path is empty, add `index.gmi` as the file to save

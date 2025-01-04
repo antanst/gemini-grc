@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"fmt"
+	"gemini-grc/common"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -9,18 +10,18 @@ import (
 	"gemini-grc/logging"
 )
 
-func GetPageLinks(currentURL URL, gemtext string) LinkList {
+func GetPageLinks(currentURL common.URL, gemtext string) common.LinkList {
 	// Grab link lines
 	linkLines := ExtractLinkLines(gemtext)
 	if len(linkLines) == 0 {
 		return nil
 	}
-	var linkURLs LinkList
+	var linkURLs common.LinkList
 	// Normalize URLs in links, and store them in snapshot
 	for _, line := range linkLines {
 		linkURL, err := NormalizeLink(line, currentURL.String())
 		if err != nil {
-			logging.LogDebug("%s: %s", ErrGeminiLinkLineParse, err)
+			logging.LogDebug("%s: %s", common.ErrGeminiLinkLineParse, err)
 			continue
 		}
 		linkURLs = append(linkURLs, *linkURL)
@@ -42,11 +43,11 @@ func ExtractLinkLines(gemtext string) []string {
 // NormalizeLink takes a single link line and the current URL,
 // return the URL converted to an absolute URL
 // and its description.
-func NormalizeLink(linkLine string, currentURL string) (*URL, error) {
+func NormalizeLink(linkLine string, currentURL string) (*common.URL, error) {
 	// Parse the current URL
 	baseURL, err := url.Parse(currentURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrURLParse, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrURLParse, err)
 	}
 
 	// Regular expression to extract the URL part from a link line
@@ -56,13 +57,13 @@ func NormalizeLink(linkLine string, currentURL string) (*URL, error) {
 	matches := re.FindStringSubmatch(linkLine)
 	if len(matches) == 0 {
 		// If the line doesn't match the expected format, return it unchanged
-		return nil, fmt.Errorf("%w for link line %s", ErrGeminiLinkLineParse, linkLine)
+		return nil, fmt.Errorf("%w for link line %s", common.ErrGeminiLinkLineParse, linkLine)
 	}
 
 	originalURLStr := matches[1]
 	_, err = url.QueryUnescape(originalURLStr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrURLDecode, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrURLDecode, err)
 	}
 
 	restOfLine := ""
@@ -74,7 +75,7 @@ func NormalizeLink(linkLine string, currentURL string) (*URL, error) {
 	parsedURL, err := url.Parse(originalURLStr)
 	if err != nil {
 		// If URL parsing fails, return an error
-		return nil, fmt.Errorf("%w: %w", ErrURLParse, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrURLParse, err)
 	}
 
 	// Resolve relative URLs against the base URL
@@ -89,10 +90,10 @@ func NormalizeLink(linkLine string, currentURL string) (*URL, error) {
 		restOfLine = restOfLine[1:]
 	}
 
-	finalURL, err := ParseURL(parsedURL.String(), restOfLine)
+	finalURL, err := common.ParseURL(parsedURL.String(), restOfLine)
 	if err != nil {
 		// If URL parsing fails, return an error
-		return nil, fmt.Errorf("%w: %w", ErrURLParse, err)
+		return nil, fmt.Errorf("%w: %w", common.ErrURLParse, err)
 	}
 
 	return finalURL, nil
@@ -107,13 +108,13 @@ func ParseFirstTwoDigits(input string) (int, error) {
 	// Find the first match in the string
 	matches := re.FindStringSubmatch(input)
 	if len(matches) == 0 {
-		return 0, fmt.Errorf("%w", ErrGeminiResponseHeader)
+		return 0, fmt.Errorf("%w", common.ErrGeminiResponseHeader)
 	}
 
 	// Parse the captured match as an integer
 	snapshot, err := strconv.Atoi(matches[1])
 	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ErrTextParse, err)
+		return 0, fmt.Errorf("%w: %w", common.ErrTextParse, err)
 	}
 
 	return snapshot, nil
@@ -121,7 +122,7 @@ func ParseFirstTwoDigits(input string) (int, error) {
 
 // extractRedirectTarget returns the redirection
 // URL by parsing the header (or error message)
-func extractRedirectTarget(currentURL URL, input string) (*URL, error) {
+func extractRedirectTarget(currentURL common.URL, input string) (*common.URL, error) {
 	// \d+ - matches one or more digits
 	// \s+ - matches one or more whitespace
 	// ([^\r]+) - captures everything until it hits a \r (or end of string)
@@ -129,11 +130,11 @@ func extractRedirectTarget(currentURL URL, input string) (*URL, error) {
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(input)
 	if len(matches) < 2 {
-		return nil, fmt.Errorf("%w: %s", ErrGeminiRedirect, input)
+		return nil, fmt.Errorf("%w: %s", common.ErrGeminiRedirect, input)
 	}
-	newURL, err := DeriveAbsoluteURL(currentURL, matches[1])
+	newURL, err := common.DeriveAbsoluteURL(currentURL, matches[1])
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w: %s", ErrGeminiRedirect, err, input)
+		return nil, fmt.Errorf("%w: %w: %s", common.ErrGeminiRedirect, err, input)
 	}
 	return newURL, nil
 }

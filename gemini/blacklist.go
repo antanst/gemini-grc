@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"fmt"
+	"gemini-grc/common"
 	"os"
 	"strings"
 
@@ -39,7 +40,11 @@ func LoadBlacklist() {
 	}
 }
 
-func IsBlacklisted(url URL) bool {
+func IsBlacklisted(u string) bool {
+	url, err := common.ParseURL(u, "")
+	if err != nil {
+		return false
+	}
 	hostWithPort := fmt.Sprintf("%s:%d", url.Hostname, url.Port)
 	for _, v := range *Blacklist {
 		if v == url.Hostname || v == hostWithPort {
