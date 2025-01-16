@@ -1,12 +1,13 @@
 package main
 
 import (
-	main2 "gemini-grc/db"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"gemini-grc/common"
 	"gemini-grc/config"
+	"gemini-grc/db"
 	"gemini-grc/gemini"
 	"gemini-grc/logging"
 	"github.com/jmoiron/sqlx"
@@ -30,7 +31,7 @@ func runApp() error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	db := main2.ConnectToDB()
+	_db := db.ConnectToDB()
 
 	defer func(db *sqlx.DB) {
 		err := db.Close()
@@ -38,17 +39,20 @@ func runApp() error {
 			// TODO properly log & hangle error
 			panic(err)
 		}
-	}(db)
+	}(_db)
 
 	gemini.LoadBlacklist()
+
+	common.StatusChan = make(chan common.WorkerStatus, config.CONFIG.NumOfWorkers)
 
 	// If there's an argument, visit this
 	// URL only and don't spawn other workers
 	if len(os.Args) > 1 {
 		url := os.Args[1]
-		go gemini.RunWorkerWithTx(0, db, &url)
+		gemini.CrawlOneURL(_db, &url)
+		return nil
 	} else {
-		go gemini.SpawnWorkers(config.CONFIG.NumOfWorkers, db)
+		go gemini.SpawnWorkers(config.CONFIG.NumOfWorkers, _db)
 	}
 
 	<-signals
