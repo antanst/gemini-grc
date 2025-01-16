@@ -1,10 +1,10 @@
-SHELL := /usr/local/bin/oksh
+SHELL := /bin/env oksh
 export PATH := $(PATH)
 
-all: fmt lintfix test clean build
+all: fmt lintfix tidy test clean build
 
 clean:
-	rm ./main
+	rm -f ./gemini-grc
 
 debug:
 	@echo "PATH: $(PATH)"
@@ -17,6 +17,9 @@ debug:
 # Test
 test:
 	go test ./...
+
+tidy:
+	go mod tidy
 
 # Format code
 fmt:
@@ -32,4 +35,13 @@ lintfix: fmt
 	golangci-lint run --fix
 
 build:
-	go build ./main.go
+	go build -o gemini-grc ./main.go
+
+show-updates:
+	go list -m -u all
+
+update:
+	go get -u all
+
+update-patch:
+	go get -u=patch all
