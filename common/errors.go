@@ -29,7 +29,7 @@ func NewErrGeminiStatusCode(code int, header string) error {
 	case code >= 60 && code < 70:
 		msg = "TLS error"
 	default:
-		msg = "unexpected status code"
+		msg = "unexpected Status code"
 	}
 	return &GeminiError{
 		Msg:    msg,
@@ -51,6 +51,8 @@ var (
 	ErrUTF8Parse    = errors.New("UTF-8 parse error")
 	ErrTextParse    = errors.New("text parse error")
 
+	ErrBlacklistMatches = errors.New("url matches blacklist")
+
 	ErrNetwork                        = errors.New("network error")
 	ErrNetworkDNS                     = errors.New("network DNS error")
 	ErrNetworkTLS                     = errors.New("network TLS error")
@@ -58,7 +60,8 @@ var (
 	ErrNetworkCannotWrite             = errors.New("network error - cannot write")
 	ErrNetworkResponseSizeExceededMax = errors.New("network error - response size exceeded maximum size")
 
-	ErrDatabase = errors.New("database error")
+	ErrDatabase     = errors.New("database error")
+	ErrDatabaseScan = errors.New("database scan error")
 )
 
 // We could have used a map for speed, but
@@ -75,6 +78,8 @@ var knownErrors = []error{ //nolint:gochecknoglobals
 	ErrGeminiResponseHeader,
 	ErrGeminiRedirect,
 
+	ErrBlacklistMatches,
+
 	ErrURLParse,
 	ErrURLDecode,
 	ErrUTF8Parse,
@@ -88,6 +93,7 @@ var knownErrors = []error{ //nolint:gochecknoglobals
 	ErrNetworkResponseSizeExceededMax,
 
 	ErrDatabase,
+	ErrDatabaseScan,
 }
 
 func IsKnownError(err error) bool {
