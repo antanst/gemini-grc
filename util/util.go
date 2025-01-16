@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"regexp"
 	"runtime/debug"
 )
 
 func PrintStackAndPanic(err error) {
-	fmt.Printf("Error %s Stack trace:\n%s", err, debug.Stack())
+	fmt.Printf("PANIC Error %s Stack trace:\n%s", err, debug.Stack())
 	panic("PANIC")
 }
 
@@ -33,4 +34,11 @@ func SecureRandomInt(max int) int {
 func PrettyJson(data string) string {
 	marshalled, _ := json.MarshalIndent(data, "", "  ")
 	return fmt.Sprintf("%s\n", marshalled)
+}
+
+// GetLinesMatchingRegex returns all lines that match given regex
+func GetLinesMatchingRegex(input string, pattern string) []string {
+	re := regexp.MustCompile(pattern)
+	matches := re.FindAllString(input, -1)
+	return matches
 }
