@@ -1,8 +1,9 @@
 package gemini
 
 import (
-	"gemini-grc/common"
 	"testing"
+
+	"gemini-grc/common"
 )
 
 func TestExtractRedirectTargetFullURL(t *testing.T) {
