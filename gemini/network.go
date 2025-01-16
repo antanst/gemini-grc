@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"gemini-grc/common"
 	"io"
 	"net"
 	gourl "net/url"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"gemini-grc/common"
 	"gemini-grc/config"
 	"gemini-grc/logging"
 	"github.com/guregu/null/v5"
@@ -28,20 +28,11 @@ type PageData struct {
 	Data           []byte
 }
 
-// Resolve the URL hostname and
-// check if we already have an open
-// connection to this host.
-// If we can connect, return a list
-// of the resolved IPs.
 func getHostIPAddresses(hostname string) ([]string, error) {
 	addrs, err := net.LookupHost(hostname)
 	if err != nil {
 		return nil, fmt.Errorf("%w:%w", common.ErrNetworkDNS, err)
 	}
-	IPPool.Lock.RLock()
-	defer func() {
-		IPPool.Lock.RUnlock()
-	}()
 	return addrs, nil
 }
 
