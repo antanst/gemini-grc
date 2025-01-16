@@ -26,11 +26,11 @@ func (u *URL) Scan(value interface{}) error {
 	}
 	b, ok := value.(string)
 	if !ok {
-		return fmt.Errorf("failed to scan GeminiUrl: expected string, got %T", value)
+		return fmt.Errorf("%w: expected string, got %T", ErrDatabaseScan, value)
 	}
 	parsedURL, err := ParseURLNoNormalize(b, "")
 	if err != nil {
-		err = fmt.Errorf("failed to scan GeminiUrl %s: %v", b, err)
+		err = fmt.Errorf("%w: failed to scan GeminiUrl %s: %v", ErrDatabaseScan, b, err)
 		return err
 	}
 	*u = *parsedURL
@@ -75,6 +75,13 @@ func ParseURLNoNormalize(input string, descr string) (*URL, error) {
 		return nil, fmt.Errorf("%w: Input %s GeminiError %w", ErrURLParse, input, err)
 	}
 	full := fmt.Sprintf("%s://%s:%d%s", protocol, hostname, port, urlPath)
+	// full field should also contain query params and url fragments
+	if u.RawQuery != "" {
+		full += "?" + u.RawQuery
+	}
+	if u.Fragment != "" {
+		full += "#" + u.Fragment
+	}
 	return &URL{Protocol: protocol, Hostname: hostname, Port: port, Path: urlPath, Descr: descr, Full: full}, nil
 }
 
@@ -98,6 +105,13 @@ func ParseURL(input string, descr string) (*URL, error) {
 		return nil, fmt.Errorf("%w: Input %s GeminiError %w", ErrURLParse, input, err)
 	}
 	full := fmt.Sprintf("%s://%s:%d%s", protocol, hostname, port, urlPath)
+	// full field should also contain query params and url fragments
+	if u.RawQuery != "" {
+		full += "?" + u.RawQuery
+	}
+	if u.Fragment != "" {
+		full += "#" + u.Fragment
+	}
 	return &URL{Protocol: protocol, Hostname: hostname, Port: port, Path: urlPath, Descr: descr, Full: full}, nil
 }
 
