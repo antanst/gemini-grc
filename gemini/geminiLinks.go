@@ -77,8 +77,8 @@ func ParseGeminiLinkLine(linkLine string, currentURL string) (*common.URL, error
 	if len(description) > 0 && description[0] == ' ' {
 		description = description[1:]
 	}
-	
-	finalURL, err := common.ParseURL(parsedURL.String(), description)
+
+	finalURL, err := common.ParseURL(parsedURL.String(), description, true)
 	if err != nil {
 		// If URL parsing fails, return an error
 		return nil, fmt.Errorf("%w: %w", common.ErrURLParse, err)

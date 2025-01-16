@@ -28,7 +28,7 @@ func (u *URL) Scan(value interface{}) error {
 	if !ok {
 		return fmt.Errorf("%w: expected string, got %T", ErrDatabaseScan, value)
 	}
-	parsedURL, err := ParseURLNoNormalize(b, "")
+	parsedURL, err := ParseURL(b, "", false)
 	if err != nil {
 		err = fmt.Errorf("%w: failed to scan GeminiUrl %s: %v", ErrDatabaseScan, b, err)
 		return err
@@ -55,38 +55,14 @@ func (u URL) Value() (driver.Value, error) {
 	return u.Full, nil
 }
 
-func ParseURLNoNormalize(input string, descr string) (*URL, error) {
-	u, err := url.Parse(input)
-	if err != nil {
-		return nil, fmt.Errorf("%w: Input %s URL Parse Error: %w", ErrURLParse, input, err)
+func ParseURL(input string, descr string, normalize bool) (*URL, error) {
+	var u *url.URL
+	var err error
+	if normalize {
+		u, err = NormalizeURL(input)
+	} else {
+		u, err = url.Parse(input)
 	}
-	if u.Scheme != "gemini" {
-		return nil, fmt.Errorf("%w: URL scheme '%s' is not supported", ErrURLNotGemini, u.Scheme)
-	}
-	protocol := u.Scheme
-	hostname := u.Hostname()
-	strPort := u.Port()
-	urlPath := u.Path
-	if strPort == "" {
-		strPort = "1965"
-	}
-	port, err := strconv.Atoi(strPort)
-	if err != nil {
-		return nil, fmt.Errorf("%w: Input %s GeminiError %w", ErrURLParse, input, err)
-	}
-	full := fmt.Sprintf("%s://%s:%d%s", protocol, hostname, port, urlPath)
-	// full field should also contain query params and url fragments
-	if u.RawQuery != "" {
-		full += "?" + u.RawQuery
-	}
-	if u.Fragment != "" {
-		full += "#" + u.Fragment
-	}
-	return &URL{Protocol: protocol, Hostname: hostname, Port: port, Path: urlPath, Descr: descr, Full: full}, nil
-}
-
-func ParseURL(input string, descr string) (*URL, error) {
-	u, err := NormalizeURL(input)
 	if err != nil {
 		return nil, fmt.Errorf("%w: Input %s URL Parse Error: %w", ErrURLParse, input, err)
 	}
@@ -121,7 +97,7 @@ func ParseURL(input string, descr string) (*URL, error) {
 func DeriveAbsoluteURL(currentURL URL, input string) (*URL, error) {
 	// If target URL is absolute, return just it
 	if strings.Contains(input, "://") {
-		return ParseURL(input, "")
+		return ParseURL(input, "", true)
 	}
 	// input is a relative path. Clean it and construct absolute.
 	var newPath string
@@ -134,7 +110,7 @@ func DeriveAbsoluteURL(currentURL URL, input string) (*URL, error) {
 		newPath = path.Join(currentURL.Path, "/", path.Clean(input))
 	}
 	strURL := fmt.Sprintf("%s://%s:%d%s", currentURL.Protocol, currentURL.Hostname, currentURL.Port, newPath)
-	return ParseURL(strURL, "")
+	return ParseURL(strURL, "", true)
 }
 
 // NormalizeURL takes a URL string and returns a normalized version.

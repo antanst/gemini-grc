@@ -1,15 +1,16 @@
 package common_test
 
 import (
-	"gemini-grc/common"
 	"reflect"
 	"testing"
+
+	"gemini-grc/common"
 )
 
 func TestParseURL(t *testing.T) {
 	t.Parallel()
 	input := "gemini://caolan.uk/cgi-bin/weather.py/wxfcs/3162"
-	parsed, err := common.ParseURL(input, "")
+	parsed, err := common.ParseURL(input, "", true)
 	value, _ := parsed.Value()
 	if err != nil || !(value == "gemini://caolan.uk:1965/cgi-bin/weather.py/wxfcs/3162") {
 		t.Errorf("fail: %s", parsed)
