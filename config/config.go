@@ -18,6 +18,7 @@ const (
 	EnvPanicOnUnexpectedError = "PANIC_ON_UNEXPECTED_ERROR"
 	EnvBlacklistPath          = "BLACKLIST_PATH"
 	EnvDryRun                 = "DRY_RUN"
+	EnvPrintWorkerStatus      = "PRINT_WORKER_STATUS"
 )
 
 // Config holds the application configuration loaded from environment variables.
@@ -30,6 +31,7 @@ type Config struct {
 	PanicOnUnexpectedError bool          // Panic on unexpected errors when visiting a URL
 	BlacklistPath          string        // File that has blacklisted strings of "host:port"
 	DryRun                 bool          // If false, don't write to disk
+	PrintWorkerStatus      bool          // If false, don't print worker status table
 }
 
 var CONFIG Config //nolint:gochecknoglobals
@@ -134,6 +136,14 @@ func GetConfig() *Config {
 				return err
 			}
 			config.DryRun = val
+			return nil
+		},
+		EnvPrintWorkerStatus: func(v string) error {
+			val, err := parseBool(EnvPrintWorkerStatus, v)
+			if err != nil {
+				return err
+			}
+			config.PrintWorkerStatus = val
 			return nil
 		},
 	}
