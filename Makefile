@@ -16,7 +16,7 @@ debug:
 
 # Test
 test:
-	go test ./...
+	go test -race ./...
 
 tidy:
 	go mod tidy
@@ -35,7 +35,7 @@ lintfix: fmt
 	golangci-lint run --fix
 
 build:
-	go build -o gemini-grc ./main.go
+	go build -race -o gemini-grc ./main.go
 
 show-updates:
 	go list -m -u all
