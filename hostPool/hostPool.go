@@ -11,44 +11,39 @@ var hostPool = HostPool{hostnames: make(map[string]struct{})} //nolint:gocheckno
 
 type HostPool struct {
 	hostnames map[string]struct{}
-	Lock      sync.RWMutex
+	lock      sync.RWMutex
 }
 
-func (p *HostPool) Add(key string) {
-	p.Lock.Lock()
-	defer p.Lock.Unlock()
-	p.hostnames[key] = struct{}{}
-}
+//func (p *HostPool) add(key string) {
+//	p.lock.Lock()
+//	defer p.lock.Unlock()
+//	p.hostnames[key] = struct{}{}
+//}
+//
+//func (p *HostPool) has(key string) bool {
+//	p.lock.RLock()
+//	defer p.lock.RUnlock()
+//	_, ok := p.hostnames[key]
+//	return ok
+//}
 
-func (p *HostPool) Get(key string) bool {
-	p.Lock.RLock()
-	defer p.Lock.RUnlock()
-	_, ok := p.hostnames[key]
-	return ok
-}
-
-func (p *HostPool) Delete(key string) {
-	p.Lock.Lock()
-	defer p.Lock.Unlock()
-	delete(p.hostnames, key)
+func RemoveHostFromPool(key string) {
+	hostPool.lock.Lock()
+	defer hostPool.lock.Unlock()
+	delete(hostPool.hostnames, key)
 }
 
 func AddHostToHostPool(key string) {
 	for {
-		// Sleep until the host doesn't exist in pool,
-		// then add it.
-		if hostPool.Get(key) {
-			time.Sleep(1 * time.Second) // Avoid flood-retrying
-			logging.LogInfo("Waiting to add %s to pool...", key)
-		} else {
-			hostPool.Add(key)
+		hostPool.lock.Lock()
+		_, exists := hostPool.hostnames[key]
+		if !exists {
+			hostPool.hostnames[key] = struct{}{}
+			hostPool.lock.Unlock()
 			return
 		}
-	}
-}
-
-func RemoveHostFromHostPool(key string) {
-	if hostPool.Get(key) {
-		hostPool.Delete(key)
+		hostPool.lock.Unlock()
+		time.Sleep(1 * time.Second)
+		logging.LogInfo("Waiting to add %s to pool...", key)
 	}
 }
