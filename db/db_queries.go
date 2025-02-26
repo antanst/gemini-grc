@@ -1,53 +1,24 @@
 package db
 
 const (
-	SQL_SELECT_RANDOM_UNVISITED_SNAPSHOTS = `
-SELECT *
-FROM snapshots
-WHERE response_code IS NULL
-  AND error IS NULL
-ORDER BY RANDOM()
-FOR UPDATE SKIP LOCKED
-LIMIT $1
-	`
 	SQL_SELECT_RANDOM_URLS_UNIQUE_HOSTS = `
 SELECT url
 FROM urls u
 WHERE u.id IN (
-      SELECT MIN(id)
-      FROM urls
-      GROUP BY host
+    SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY host ORDER BY id) as rn
+        FROM urls
+    ) t 
+    WHERE rn <= 3
 )
-LIMIT $1
-`
-	SQL_SELECT_RANDOM_UNVISITED_SNAPSHOTS_UNIQUE_HOSTS = `
-SELECT *
-FROM snapshots s
-WHERE response_code IS NULL
-  AND error IS NULL
-  AND s.id IN (
-      SELECT MIN(id)
-      FROM snapshots
-      WHERE response_code IS NULL 
-        AND error IS NULL
-      GROUP BY host
-  )
 ORDER BY RANDOM()
 FOR UPDATE SKIP LOCKED
 LIMIT $1
-`
-	SQL_SELECT_UNVISITED_SNAPSHOTS_UNIQUE_HOSTS = `
-SELECT *
-FROM snapshots s
-WHERE response_code IS NULL
-  AND error IS NULL
-  AND s.id IN (
-      SELECT MIN(id)
-      FROM snapshots
-      WHERE response_code IS NULL
-        AND error IS NULL
-      GROUP BY host
-  )
+	`
+	SQL_SELECT_RANDOM_URLS = `
+SELECT url
+FROM urls u
+ORDER BY RANDOM()
 FOR UPDATE SKIP LOCKED
 LIMIT $1
 `
@@ -89,5 +60,8 @@ RETURNING id
         INSERT INTO urls (url, host, timestamp)
         VALUES (:url, :host, :timestamp)
         ON CONFLICT (url) DO NOTHING
+    `
+	SQL_DELETE_URL = `
+        DELETE FROM urls WHERE url=$1
     `
 )

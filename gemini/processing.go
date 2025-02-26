@@ -26,7 +26,7 @@ func BytesToValidUTF8(input []byte) (string, error) {
 	if len(input) > maxSize {
 		return "", fmt.Errorf("%w: %d bytes (max %d)", ErrInputTooLarge, len(input), maxSize)
 	}
-	// Remove NULL byte 0x00 (ReplaceAll accepts slices)
+	// remove NULL byte 0x00 (ReplaceAll accepts slices)
 	inputNoNull := bytes.ReplaceAll(input, []byte{byte(0)}, []byte{})
 	if utf8.Valid(inputNoNull) {
 		return string(inputNoNull), nil

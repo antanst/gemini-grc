@@ -1,19 +1,35 @@
-package gemini
+package common
 
 import (
 	"fmt"
 	"strings"
+
+	"gemini-grc/config"
 )
 
 type WorkerStatus struct {
-	id     int
-	status string
+	ID     int
+	Status string
 }
 
-var statusChan chan WorkerStatus
+func UpdateWorkerStatus(workerID int, status string) {
+	if !config.GetConfig().PrintWorkerStatus {
+		return
+	}
+	if config.CONFIG.NumOfWorkers > 1 {
+		StatusChan <- WorkerStatus{
+			ID:     workerID,
+			Status: status,
+		}
+	}
+}
 
 func PrintWorkerStatus(totalWorkers int, statusChan chan WorkerStatus) {
-	// Create a slice to store current status of each worker
+	if !config.GetConfig().PrintWorkerStatus {
+		return
+	}
+
+	// Create a slice to store current Status of each worker
 	statuses := make([]string, totalWorkers)
 
 	// Initialize empty statuses
@@ -32,14 +48,14 @@ func PrintWorkerStatus(totalWorkers int, statusChan chan WorkerStatus) {
 	}
 	fmt.Print(output.String())
 
-	// Continuously receive status updates
+	// Continuously receive Status updates
 	for update := range statusChan {
-		if update.id >= totalWorkers {
+		if update.ID >= totalWorkers {
 			continue
 		}
 
-		// Update the status
-		statuses[update.id] = update.status
+		// Update the Status
+		statuses[update.ID] = update.Status
 
 		// Build the complete output string
 		output.Reset()
@@ -48,7 +64,7 @@ func PrintWorkerStatus(totalWorkers int, statusChan chan WorkerStatus) {
 			output.WriteString(fmt.Sprintf("[%2d] %.100s\n", i, status))
 		}
 
-		// Print the entire status
+		// Print the entire Status
 		fmt.Print(output.String())
 	}
 }

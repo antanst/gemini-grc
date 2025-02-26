@@ -2,44 +2,78 @@ package gemini
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"net"
-	gourl "net/url"
+	stdurl "net/url"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"gemini-grc/common"
+	errors2 "gemini-grc/common/errors"
+	"gemini-grc/common/snapshot"
+	_url "gemini-grc/common/url"
 	"gemini-grc/config"
+	"gemini-grc/errors"
 	"gemini-grc/logging"
 	"github.com/guregu/null/v5"
 )
 
-type PageData struct {
-	ResponseCode   int
-	ResponseHeader string
-	MimeType       string
-	Lang           string
-	GemText        string
-	Data           []byte
-}
-
-func getHostIPAddresses(hostname string) ([]string, error) {
-	addrs, err := net.LookupHost(hostname)
+// Visit given URL, using the Gemini protocol.
+// Mutates given Snapshot with the data.
+// In case of error, we store the error string
+// inside snapshot and return the error.
+func Visit(url string) (s *snapshot.Snapshot, err error) {
+	s, err = snapshot.SnapshotFromURL(url, true)
 	if err != nil {
-		return nil, fmt.Errorf("%w:%w", common.ErrNetworkDNS, err)
+		return nil, err
 	}
-	return addrs, nil
+
+	defer func() {
+		if err != nil {
+			// GeminiError and HostError should
+			// be stored in the snapshot. Other
+			// errors are returned.
+			if errors2.IsHostError(err) {
+				s.Error = null.StringFrom(err.Error())
+				err = nil
+			} else if IsGeminiError(err) {
+				s.Error = null.StringFrom(err.Error())
+				s.Header = null.StringFrom(errors.Unwrap(err).(*GeminiError).Header)
+				s.ResponseCode = null.IntFrom(int64(errors.Unwrap(err).(*GeminiError).Code))
+				err = nil
+			} else {
+				s = nil
+			}
+		}
+	}()
+
+	data, err := ConnectAndGetData(s.URL.String())
+	if err != nil {
+		return s, err
+	}
+
+	s, err = processData(*s, data)
+	if err != nil {
+		return s, err
+	}
+
+	if isGeminiCapsule(s) {
+		links := GetPageLinks(s.URL, s.GemText.String)
+		if len(links) > 0 {
+			logging.LogDebug("Found %d links", len(links))
+			s.Links = null.ValueFrom(links)
+		}
+	}
+	return s, nil
 }
 
 func ConnectAndGetData(url string) ([]byte, error) {
-	parsedURL, err := gourl.Parse(url)
+	parsedURL, err := stdurl.Parse(url)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", common.ErrURLParse, err)
+		return nil, errors.NewError(err)
 	}
 	hostname := parsedURL.Hostname()
 	port := parsedURL.Port()
@@ -47,29 +81,28 @@ func ConnectAndGetData(url string) ([]byte, error) {
 		port = "1965"
 	}
 	host := fmt.Sprintf("%s:%s", hostname, port)
+	timeoutDuration := time.Duration(config.CONFIG.ResponseTimeout) * time.Second
 	// Establish the underlying TCP connection.
 	dialer := &net.Dialer{
-		Timeout: time.Duration(config.CONFIG.ResponseTimeout) * time.Second,
+		Timeout: timeoutDuration,
 	}
 	conn, err := dialer.Dial("tcp", host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", common.ErrNetwork, err)
+		return nil, errors2.NewHostError(err)
 	}
 	// Make sure we always close the connection.
 	defer func() {
-		// No need to handle error:
-		// Connection will time out eventually if still open somehow.
 		_ = conn.Close()
 	}()
 
 	// Set read and write timeouts on the TCP connection.
-	err = conn.SetReadDeadline(time.Now().Add(time.Duration(config.CONFIG.ResponseTimeout) * time.Second))
+	err = conn.SetReadDeadline(time.Now().Add(timeoutDuration))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", common.ErrNetworkSetConnectionDeadline, err)
+		return nil, errors2.NewHostError(err)
 	}
-	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(config.CONFIG.ResponseTimeout) * time.Second))
+	err = conn.SetWriteDeadline(time.Now().Add(timeoutDuration))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", common.ErrNetworkSetConnectionDeadline, err)
+		return nil, errors2.NewHostError(err)
 	}
 
 	// Perform the TLS handshake
@@ -79,8 +112,17 @@ func ConnectAndGetData(url string) ([]byte, error) {
 		// MinVersion:         tls.VersionTLS12, // Use a minimum TLS version. Warning breaks a lot of sites.
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
-	if err := tlsConn.Handshake(); err != nil {
-		return nil, fmt.Errorf("%w: %w", common.ErrNetworkTLS, err)
+	err = tlsConn.SetReadDeadline(time.Now().Add(timeoutDuration))
+	if err != nil {
+		return nil, errors2.NewHostError(err)
+	}
+	err = tlsConn.SetWriteDeadline(time.Now().Add(timeoutDuration))
+	if err != nil {
+		return nil, errors2.NewHostError(err)
+	}
+	err = tlsConn.Handshake()
+	if err != nil {
+		return nil, errors2.NewHostError(err)
 	}
 
 	// We read `buf`-sized chunks and add data to `data`.
@@ -91,10 +133,10 @@ func ConnectAndGetData(url string) ([]byte, error) {
 	// Fix for stupid server bug:
 	// Some servers return 'Header: 53 No proxying to other hosts or ports!'
 	// when the port is 1965 and is still specified explicitly in the URL.
-	_url, _ := common.ParseURL(url, "")
-	_, err = tlsConn.Write([]byte(fmt.Sprintf("%s\r\n", _url.StringNoDefaultPort())))
+	url2, _ := _url.ParseURL(url, "", true)
+	_, err = tlsConn.Write([]byte(fmt.Sprintf("%s\r\n", url2.StringNoDefaultPort())))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", common.ErrNetworkCannotWrite, err)
+		return nil, errors2.NewHostError(err)
 	}
 	// Read response bytes in len(buf) byte chunks
 	for {
@@ -103,90 +145,50 @@ func ConnectAndGetData(url string) ([]byte, error) {
 			data = append(data, buf[:n]...)
 		}
 		if len(data) > config.CONFIG.MaxResponseSize {
-			return nil, fmt.Errorf("%w: %v", common.ErrNetworkResponseSizeExceededMax, config.CONFIG.MaxResponseSize)
+			return nil, errors2.NewHostError(err)
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, fmt.Errorf("%w: %w", common.ErrNetwork, err)
+			return nil, errors2.NewHostError(err)
 		}
 	}
 	return data, nil
 }
 
-// Visit given URL, using the Gemini protocol.
-// Mutates given Snapshot with the data.
-// In case of error, we store the error string
-// inside snapshot and return the error.
-func Visit(s *common.Snapshot) (err error) {
-	// Don't forget to also store error
-	// response code (if we have one)
-	// and header
-	defer func() {
-		if err != nil {
-			s.Error = null.StringFrom(err.Error())
-			if errors.As(err, new(*common.GeminiError)) {
-				s.Header = null.StringFrom(err.(*common.GeminiError).Header)
-				s.ResponseCode = null.IntFrom(int64(err.(*common.GeminiError).Code))
-			}
-		}
-	}()
-	s.Timestamp = null.TimeFrom(time.Now())
-	data, err := ConnectAndGetData(s.URL.String())
-	if err != nil {
-		return err
-	}
-	pageData, err := processData(data)
-	if err != nil {
-		return err
-	}
-	s.Header = null.StringFrom(pageData.ResponseHeader)
-	s.ResponseCode = null.IntFrom(int64(pageData.ResponseCode))
-	s.MimeType = null.StringFrom(pageData.MimeType)
-	s.Lang = null.StringFrom(pageData.Lang)
-	if pageData.GemText != "" {
-		s.GemText = null.StringFrom(pageData.GemText)
-	}
-	if pageData.Data != nil {
-		s.Data = null.ValueFrom(pageData.Data)
-	}
-	return nil
-}
-
-// processData returne results from
-// parsing Gemini header data:
-// Code, mime type and lang (optional)
-// Returns error if header was invalid
-func processData(data []byte) (*PageData, error) {
+func processData(s snapshot.Snapshot, data []byte) (*snapshot.Snapshot, error) {
 	header, body, err := getHeadersAndData(data)
 	if err != nil {
 		return nil, err
 	}
 	code, mimeType, lang := getMimeTypeAndLang(header)
-	logging.LogDebug("Header: %s", strings.TrimSpace(header))
-	if code != 20 {
-		return nil, common.NewErrGeminiStatusCode(code, header)
+
+	if code != 0 {
+		s.ResponseCode = null.IntFrom(int64(code))
+	}
+	if header != "" {
+		s.Header = null.StringFrom(header)
+	}
+	if mimeType != "" {
+		s.MimeType = null.StringFrom(mimeType)
+	}
+	if lang != "" {
+		s.Lang = null.StringFrom(lang)
 	}
 
-	pageData := PageData{
-		ResponseCode:   code,
-		ResponseHeader: header,
-		MimeType:       mimeType,
-		Lang:           lang,
-	}
 	// If we've got a Gemini document, populate
 	// `GemText` field, otherwise raw data goes to `Data`.
 	if mimeType == "text/gemini" {
 		validBody, err := BytesToValidUTF8(body)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", common.ErrUTF8Parse, err)
+			return nil, errors.NewError(err)
 		}
-		pageData.GemText = validBody
+		s.GemText = null.StringFrom(validBody)
 	} else {
-		pageData.Data = body
+		s.Data = null.ValueFrom(body)
 	}
-	return &pageData, nil
+	return &s, nil
 }
 
 // Checks for a Gemini header, which is
@@ -196,29 +198,42 @@ func processData(data []byte) (*PageData, error) {
 func getHeadersAndData(data []byte) (string, []byte, error) {
 	firstLineEnds := slices.Index(data, '\n')
 	if firstLineEnds == -1 {
-		return "", nil, common.ErrGeminiResponseHeader
+		return "", nil, errors2.NewHostError(fmt.Errorf("error parsing header"))
 	}
 	firstLine := string(data[:firstLineEnds])
 	rest := data[firstLineEnds+1:]
-	return firstLine, rest, nil
+	return strings.TrimSpace(firstLine), rest, nil
 }
 
-// Parses code, mime type and language
-// from a Gemini header.
-// Examples:
-// `20 text/gemini lang=en` (code, mimetype, lang)
-// `20 text/gemini` (code, mimetype)
-// `31 gemini://redirected.to/other/site` (code)
+// getMimeTypeAndLang Parses code, mime type and language
+// given a Gemini header.
 func getMimeTypeAndLang(headers string) (int, string, string) {
-	// Regex that parses code, mimetype & optional charset/lang parameters
-	re := regexp.MustCompile(`^(\d+)\s+([a-zA-Z0-9/\-+]+)(?:[;\s]+(?:(?:charset|lang)=([a-zA-Z0-9-]+)))?\s*$`)
+	// First try to match the full format: "<code> <mimetype> [charset=<value>] [lang=<value>]"
+	// The regex looks for:
+	// - A number (\d+)
+	// - Followed by whitespace and a mimetype ([a-zA-Z0-9/\-+]+)
+	// - Optionally followed by charset and/or lang parameters in any order
+	// - Only capturing the lang value, ignoring charset
+	re := regexp.MustCompile(`^(\d+)\s+([a-zA-Z0-9/\-+]+)(?:(?:[\s;]+(?:charset=[^;\s]+|lang=([a-zA-Z0-9-]+)))*)\s*$`)
 	matches := re.FindStringSubmatch(headers)
 	if matches == nil || len(matches) <= 1 {
-		// Try to get code at least
-		re := regexp.MustCompile(`^(\d+)\s+`)
+		// If full format doesn't match, try to match redirect format: "<code> <URL>"
+		// This handles cases like "31 gemini://example.com"
+		re := regexp.MustCompile(`^(\d+)\s+(.+)$`)
 		matches := re.FindStringSubmatch(headers)
 		if matches == nil || len(matches) <= 1 {
-			return 0, "", ""
+			// If redirect format doesn't match, try to match just a status code
+			// This handles cases like "99"
+			re := regexp.MustCompile(`^(\d+)\s*$`)
+			matches := re.FindStringSubmatch(headers)
+			if matches == nil || len(matches) <= 1 {
+				return 0, "", ""
+			}
+			code, err := strconv.Atoi(matches[1])
+			if err != nil {
+				return 0, "", ""
+			}
+			return code, "", ""
 		}
 		code, err := strconv.Atoi(matches[1])
 		if err != nil {
@@ -231,6 +246,10 @@ func getMimeTypeAndLang(headers string) (int, string, string) {
 		return 0, "", ""
 	}
 	mimeType := matches[2]
-	param := matches[3] // This will capture either charset or lang value
-	return code, mimeType, param
+	lang := matches[3] // Will be empty string if no lang parameter was found
+	return code, mimeType, lang
+}
+
+func isGeminiCapsule(s *snapshot.Snapshot) bool {
+	return !s.Error.Valid && s.MimeType.Valid && s.MimeType.String == "text/gemini"
 }

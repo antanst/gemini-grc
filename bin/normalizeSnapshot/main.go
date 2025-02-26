@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"gemini-grc/gemini"
+	"gemini-grc/common/snapshot"
+	"gemini-grc/common/url"
+	main2 "gemini-grc/db"
 	_ "github.com/jackc/pgx/v5/stdlib" // PGX driver for PostgreSQL
 	"github.com/jmoiron/sqlx"
 )
@@ -21,7 +23,7 @@ func main() {
         ORDER BY id
         LIMIT 10000 OFFSET $1
     `
-		var snapshots []gemini.Snapshot
+		var snapshots []snapshot.Snapshot
 		err := tx.Select(&snapshots, query, count)
 		if err != nil {
 			printErrorAndExit(tx, err)
@@ -32,8 +34,8 @@ func main() {
 		}
 		for _, s := range snapshots {
 			count++
-			escaped := gemini.EscapeURL(s.URL.String())
-			normalizedGeminiURL, err := gemini.ParseURL(escaped, "")
+			escaped := url.EscapeURL(s.URL.String())
+			normalizedGeminiURL, err := url.ParseURL(escaped, "", true)
 			if err != nil {
 				fmt.Println(s.URL.String())
 				fmt.Println(escaped)
@@ -47,7 +49,7 @@ func main() {
 			}
 			// If a snapshot already exists with the normalized
 			// URL, delete the current snapshot and leave the other.
-			var ss []gemini.Snapshot
+			var ss []snapshot.Snapshot
 			err = tx.Select(&ss, "SELECT * FROM snapshots WHERE URL=$1", normalizedURLString)
 			if err != nil {
 				printErrorAndExit(tx, err)
@@ -69,7 +71,7 @@ func main() {
 			// Saves the snapshot with the normalized URL
 			tx.MustExec("DELETE FROM snapshots WHERE id=$1", s.ID)
 			s.URL = *normalizedGeminiURL
-			err = gemini.UpsertSnapshot(0, tx, &s)
+			err = main2.OverwriteSnapshot(tx, &s)
 			if err != nil {
 				printErrorAndExit(tx, err)
 			}
