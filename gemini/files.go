@@ -2,13 +2,13 @@ package gemini
 
 import (
 	"fmt"
-	"gemini-grc/common"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
+	"gemini-grc/common/snapshot"
 	"gemini-grc/logging"
 )
 
@@ -64,7 +64,7 @@ func calcFilePath(rootPath, urlPath string) (string, error) {
 	return finalPath, nil
 }
 
-func SaveToFile(rootPath string, s *common.Snapshot, done chan struct{}) {
+func SaveToFile(rootPath string, s *snapshot.Snapshot, done chan struct{}) {
 	parentPath := path.Join(rootPath, s.URL.Hostname)
 	urlPath := s.URL.Path
 	// If path is empty, add `index.gmi` as the file to save
@@ -105,7 +105,7 @@ func ReadLines(path string) []string {
 		panic(fmt.Sprintf("Failed to read file: %s", err))
 	}
 	lines := strings.Split(string(data), "\n")
-	// Remove last line if empty
+	// remove last line if empty
 	// (happens when file ends with '\n')
 	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]

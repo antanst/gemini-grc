@@ -1,18 +1,18 @@
 package gemini
 
 import (
-	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
-	"gemini-grc/common"
+	"gemini-grc/common/url"
 )
 
 type TestData struct {
 	currentURL string
 	link       string
-	value      *common.URL
-	error      error
+	value      *url.URL
+	error      string
 }
 
 var data = []TestData{
@@ -20,12 +20,12 @@ var data = []TestData{
 		currentURL: "https://gemini.com/",
 		link:       "https://gemini.com/",
 		value:      nil,
-		error:      common.ErrGeminiLinkLineParse,
+		error:      "error parsing link line",
 	},
 	{
 		currentURL: "gemini://gemi.dev/cgi-bin/xkcd/",
 		link:       "=> archive/ Complete Archive",
-		value: &common.URL{
+		value: &url.URL{
 			Protocol: "gemini",
 			Hostname: "gemi.dev",
 			Port:     1965,
@@ -33,12 +33,12 @@ var data = []TestData{
 			Descr:    "Complete Archive",
 			Full:     "gemini://gemi.dev:1965/cgi-bin/xkcd/archive/",
 		},
-		error: nil,
+		error: "",
 	},
 	{
 		currentURL: "gemini://gemi.dev/cgi-bin/xkcd/",
 		link:       "=> /cgi-bin/xkcd.cgi?a=5&b=6 Example",
-		value: &common.URL{
+		value: &url.URL{
 			Protocol: "gemini",
 			Hostname: "gemi.dev",
 			Port:     1965,
@@ -46,12 +46,12 @@ var data = []TestData{
 			Descr:    "Example",
 			Full:     "gemini://gemi.dev:1965/cgi-bin/xkcd.cgi?a=5&b=6",
 		},
-		error: nil,
+		error: "",
 	},
 	{
 		currentURL: "gemini://gemi.dev/cgi-bin/xkcd/",
 		link:       "=> /cgi-bin/xkcd.cgi?1494 XKCD 1494: Insurance",
-		value: &common.URL{
+		value: &url.URL{
 			Protocol: "gemini",
 			Hostname: "gemi.dev",
 			Port:     1965,
@@ -59,12 +59,12 @@ var data = []TestData{
 			Descr:    "XKCD 1494: Insurance",
 			Full:     "gemini://gemi.dev:1965/cgi-bin/xkcd.cgi?1494",
 		},
-		error: nil,
+		error: "",
 	},
 	{
 		currentURL: "gemini://gemi.dev/cgi-bin/xkcd/",
 		link:       "=> /cgi-bin/xkcd.cgi?1494#f XKCD 1494: Insurance",
-		value: &common.URL{
+		value: &url.URL{
 			Protocol: "gemini",
 			Hostname: "gemi.dev",
 			Port:     1965,
@@ -72,12 +72,12 @@ var data = []TestData{
 			Descr:    "XKCD 1494: Insurance",
 			Full:     "gemini://gemi.dev:1965/cgi-bin/xkcd.cgi?1494#f",
 		},
-		error: nil,
+		error: "",
 	},
 	{
 		currentURL: "gemini://gemi.dev/cgi-bin/xkcd/",
 		link:       "=> /cgi-bin/xkcd.cgi?c=5#d XKCD 1494: Insurance",
-		value: &common.URL{
+		value: &url.URL{
 			Protocol: "gemini",
 			Hostname: "gemi.dev",
 			Port:     1965,
@@ -85,12 +85,12 @@ var data = []TestData{
 			Descr:    "XKCD 1494: Insurance",
 			Full:     "gemini://gemi.dev:1965/cgi-bin/xkcd.cgi?c=5#d",
 		},
-		error: nil,
+		error: "",
 	},
 	{
 		currentURL: "gemini://a.b/c#d",
 		link:       "=> /d/e#f",
-		value: &common.URL{
+		value: &url.URL{
 			Protocol: "gemini",
 			Hostname: "a.b",
 			Port:     1965,
@@ -98,7 +98,7 @@ var data = []TestData{
 			Descr:    "",
 			Full:     "gemini://a.b:1965/d/e#f",
 		},
-		error: nil,
+		error: "",
 	},
 }
 
@@ -110,13 +110,10 @@ func Test(t *testing.T) {
 			if expected.value != nil {
 				t.Errorf("data[%d]: Expected value %v, got %v", i, nil, expected.value)
 			}
-			if !errors.Is(err, common.ErrGeminiLinkLineParse) {
+			if !strings.HasPrefix(err.Error(), expected.error) {
 				t.Errorf("data[%d]: expected error %v, got %v", i, expected.error, err)
 			}
 		} else {
-			if expected.error != nil {
-				t.Errorf("data[%d]: Expected error %v, got %v", i, nil, expected.error)
-			}
 			if !(reflect.DeepEqual(result, expected.value)) {
 				t.Errorf("data[%d]: expected %#v, got %#v", i, expected.value, result)
 			}

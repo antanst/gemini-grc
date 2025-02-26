@@ -1,12 +1,15 @@
-package common
+package url
 
 import (
 	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
+
+	"gemini-grc/errors"
 )
 
 type URL struct {
@@ -26,11 +29,10 @@ func (u *URL) Scan(value interface{}) error {
 	}
 	b, ok := value.(string)
 	if !ok {
-		return fmt.Errorf("%w: expected string, got %T", ErrDatabaseScan, value)
+		return errors.NewFatalError(fmt.Errorf("database scan error: expected string, got %T", value))
 	}
 	parsedURL, err := ParseURL(b, "", false)
 	if err != nil {
-		err = fmt.Errorf("%w: failed to scan GeminiUrl %s: %v", ErrDatabaseScan, b, err)
 		return err
 	}
 	*u = *parsedURL
@@ -42,8 +44,14 @@ func (u URL) String() string {
 }
 
 func (u URL) StringNoDefaultPort() string {
-	if u.Port == 1965 {
-		return fmt.Sprintf("%s://%s%s", u.Protocol, u.Hostname, u.Path)
+	if IsGeminiUrl(u.String()) {
+		if u.Port == 1965 {
+			return fmt.Sprintf("%s://%s%s", u.Protocol, u.Hostname, u.Path)
+		}
+	} else {
+		if u.Port == 70 {
+			return fmt.Sprintf("%s://%s%s", u.Protocol, u.Hostname, u.Path)
+		}
 	}
 	return u.Full
 }
@@ -55,30 +63,43 @@ func (u URL) Value() (driver.Value, error) {
 	return u.Full, nil
 }
 
+func IsGeminiUrl(url string) bool {
+	return strings.HasPrefix(url, "gemini://")
+}
+
+func IsGopherURL(s string) bool {
+	return strings.HasPrefix(s, "gopher://")
+}
+
 func ParseURL(input string, descr string, normalize bool) (*URL, error) {
 	var u *url.URL
 	var err error
 	if normalize {
 		u, err = NormalizeURL(input)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		u, err = url.Parse(input)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%w: Input %s URL Parse Error: %w", ErrURLParse, input, err)
-	}
-	if u.Scheme != "gemini" {
-		return nil, fmt.Errorf("%w: URL scheme '%s' is not supported", ErrURLNotGemini, u.Scheme)
+		if err != nil {
+			return nil, errors.NewError(fmt.Errorf("error parsing URL: %w: %s", err, input))
+		}
 	}
 	protocol := u.Scheme
 	hostname := u.Hostname()
 	strPort := u.Port()
+	// urlPath := u.EscapedPath()
 	urlPath := u.Path
 	if strPort == "" {
-		strPort = "1965"
+		if u.Scheme == "gemini" {
+			strPort = "1965" // default Gemini port
+		} else {
+			strPort = "70" // default Gopher port
+		}
 	}
 	port, err := strconv.Atoi(strPort)
 	if err != nil {
-		return nil, fmt.Errorf("%w: Input %s GeminiError %w", ErrURLParse, input, err)
+		return nil, errors.NewError(fmt.Errorf("error parsing URL: %w: %s", err, input))
 	}
 	full := fmt.Sprintf("%s://%s:%d%s", protocol, hostname, port, urlPath)
 	// full field should also contain query params and url fragments
@@ -113,7 +134,7 @@ func DeriveAbsoluteURL(currentURL URL, input string) (*URL, error) {
 	return ParseURL(strURL, "", true)
 }
 
-// NormalizeURL takes a URL string and returns a normalized version.
+// NormalizeURL takes a URL string and returns a normalized version
 // Normalized meaning:
 // - Path normalization (removing redundant slashes, . and .. segments)
 // - Proper escaping of special characters
@@ -124,7 +145,13 @@ func NormalizeURL(rawURL string) (*url.URL, error) {
 	// Parse the URL
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrURLParse, err)
+		return nil, errors.NewError(fmt.Errorf("error normalizing URL: %w: %s", err, rawURL))
+	}
+	if u.Scheme == "" {
+		return nil, errors.NewError(fmt.Errorf("error normalizing URL: No scheme: %s", rawURL))
+	}
+	if u.Host == "" {
+		return nil, errors.NewError(fmt.Errorf("error normalizing URL: No host: %s", rawURL))
 	}
 
 	// Convert scheme to lowercase
@@ -135,7 +162,7 @@ func NormalizeURL(rawURL string) (*url.URL, error) {
 		u.Host = strings.ToLower(u.Host)
 	}
 
-	// Remove default ports
+	// remove default ports
 	if u.Port() != "" {
 		switch {
 		case u.Scheme == "http" && u.Port() == "80":
@@ -143,6 +170,8 @@ func NormalizeURL(rawURL string) (*url.URL, error) {
 		case u.Scheme == "https" && u.Port() == "443":
 			u.Host = u.Hostname()
 		case u.Scheme == "gemini" && u.Port() == "1965":
+			u.Host = u.Hostname()
+		case u.Scheme == "gopher" && u.Port() == "70":
 			u.Host = u.Hostname()
 		}
 	}
@@ -152,7 +181,7 @@ func NormalizeURL(rawURL string) (*url.URL, error) {
 		// Check if there was a trailing slash before cleaning
 		hadTrailingSlash := strings.HasSuffix(u.Path, "/")
 
-		u.Path = path.Clean(u.Path)
+		u.Path = path.Clean(u.EscapedPath())
 		// If path was "/", path.Clean() will return "."
 		if u.Path == "." {
 			u.Path = "/"
@@ -162,20 +191,25 @@ func NormalizeURL(rawURL string) (*url.URL, error) {
 		}
 	}
 
-	// Properly escape the path
-	// First split on '/' to avoid escaping them
+	// Properly escape the path, but only for unescaped parts
 	parts := strings.Split(u.Path, "/")
 	for i, part := range parts {
-		parts[i] = url.PathEscape(part)
+		// Try to unescape to check if it's already escaped
+		unescaped, err := url.PathUnescape(part)
+		if err != nil || unescaped == part {
+			// Part is not escaped, so escape it
+			parts[i] = url.PathEscape(part)
+		}
+		// If already escaped, leave as is
 	}
 	u.Path = strings.Join(parts, "/")
 
-	// Remove trailing fragment if empty
+	// remove trailing fragment if empty
 	if u.Fragment == "" {
 		u.Fragment = ""
 	}
 
-	// Remove trailing query if empty
+	// remove trailing query if empty
 	if u.RawQuery == "" {
 		u.RawQuery = ""
 	}
@@ -188,7 +222,7 @@ func EscapeURL(input string) string {
 	if strings.Contains(input, "%") && !strings.Contains(input, "% ") {
 		return input
 	}
-	// Split URL into parts (protocol, host, path)
+	// Split URL into parts (protocol, host, p)
 	parts := strings.SplitN(input, "://", 2)
 	if len(parts) != 2 {
 		return input
@@ -202,18 +236,50 @@ func EscapeURL(input string) string {
 		return input
 	}
 
-	// Split host and path
+	// Split host and p
 	parts = strings.SplitN(remainder, "/", 2)
 	host := parts[0]
 	if len(parts) == 1 {
 		return protocol + "://" + host
 	}
 
-	path := parts[1]
-
 	// Escape the path portion
-	escapedPath := url.PathEscape(path)
+	escapedPath := url.PathEscape(parts[1])
 
 	// Reconstruct the URL
 	return protocol + "://" + host + "/" + escapedPath
+}
+
+// TrimTrailingPathSlash trims trailing slash and handles empty path
+func TrimTrailingPathSlash(path string) string {
+	// Handle empty path (e.g., "http://example.com" -> treat as root)
+	if path == "" {
+		return "/"
+	}
+
+	// Trim trailing slash while preserving root slash
+	path = strings.TrimSuffix(path, "/")
+	if path == "" { // This happens if path was just "/"
+		return "/"
+	}
+	return path
+}
+
+// ExtractRedirectTargetFromHeader returns the redirection
+// URL by parsing the header (or error message)
+func ExtractRedirectTargetFromHeader(currentURL URL, input string) (*URL, error) {
+	// \d+ - matches one or more digits
+	// \s+ - matches one or more whitespace
+	// ([^\r]+) - captures everything until it hits a \r (or end of string)
+	pattern := `\d+\s+([^\r]+)`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(input)
+	if len(matches) < 2 {
+		return nil, errors.NewError(fmt.Errorf("error extracting redirect target from string %s", input))
+	}
+	newURL, err := DeriveAbsoluteURL(currentURL, matches[1])
+	if err != nil {
+		return nil, err
+	}
+	return newURL, nil
 }
