@@ -3,7 +3,7 @@ package gemini
 import (
 	"fmt"
 
-	"gemini-grc/errors"
+	"github.com/antanst/go_errors"
 )
 
 // GeminiError is used to represent
@@ -48,5 +48,5 @@ func IsGeminiError(err error) bool {
 		return false
 	}
 	var asError *GeminiError
-	return errors.As(err, &asError)
+	return go_errors.As(err, &asError)
 }

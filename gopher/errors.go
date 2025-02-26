@@ -1,8 +1,6 @@
 package gopher
 
-import (
-	"gemini-grc/errors"
-)
+import "github.com/antanst/go_errors"
 
 // GopherError is an error encountered while
 // visiting a Gopher host, and is only for
@@ -28,5 +26,5 @@ func IsGopherError(err error) bool {
 		return false
 	}
 	var asError *GopherError
-	return errors.As(err, &asError)
+	return go_errors.As(err, &asError)
 }

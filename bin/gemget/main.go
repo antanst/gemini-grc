@@ -8,10 +8,10 @@ import (
 	"gemini-grc/common/snapshot"
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
-	"gemini-grc/errors"
 	"gemini-grc/gemini"
 	"gemini-grc/gopher"
 	"gemini-grc/logging"
+	"github.com/antanst/go_errors"
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 
 func runApp() error {
 	if len(os.Args) != 2 {
-		return errors.NewError(fmt.Errorf("missing URL to visit"))
+		return go_errors.NewError(fmt.Errorf("missing URL to visit"))
 	}
 	url := os.Args[1]
 	var s *snapshot.Snapshot
@@ -36,7 +36,7 @@ func runApp() error {
 	} else if _url.IsGopherURL(url) {
 		s, err = gopher.Visit(url)
 	} else {
-		return errors.NewFatalError(fmt.Errorf("not a Gemini or Gopher URL"))
+		return go_errors.NewFatalError(fmt.Errorf("not a Gemini or Gopher URL"))
 	}
 	if err != nil {
 		return err

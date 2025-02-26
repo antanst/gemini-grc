@@ -15,8 +15,8 @@ import (
 	"gemini-grc/common/snapshot"
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
-	"gemini-grc/errors"
 	"gemini-grc/logging"
+	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
 
@@ -118,7 +118,7 @@ func Visit(url string) (*snapshot.Snapshot, error) {
 func connectAndGetData(url string) ([]byte, error) {
 	parsedURL, err := stdurl.Parse(url)
 	if err != nil {
-		return nil, errors.NewError(err)
+		return nil, go_errors.NewError(err)
 	}
 
 	hostname := parsedURL.Hostname()
@@ -169,7 +169,7 @@ func connectAndGetData(url string) ([]byte, error) {
 			data = append(data, buf[:n]...)
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if go_errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, errors2.NewHostError(err)

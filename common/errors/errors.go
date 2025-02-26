@@ -3,7 +3,7 @@ package errors
 import (
 	"fmt"
 
-	"gemini-grc/errors"
+	"github.com/antanst/go_errors"
 )
 
 // HostError is an error encountered while
@@ -30,7 +30,7 @@ func IsHostError(err error) bool {
 		return false
 	}
 	var asError *HostError
-	return errors.As(err, &asError)
+	return go_errors.As(err, &asError)
 }
 
 // Sentinel errors used for their string message primarily.

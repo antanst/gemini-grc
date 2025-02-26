@@ -16,8 +16,8 @@ import (
 	"gemini-grc/common/snapshot"
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
-	"gemini-grc/errors"
 	"gemini-grc/logging"
+	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
 
@@ -41,8 +41,8 @@ func Visit(url string) (s *snapshot.Snapshot, err error) {
 				err = nil
 			} else if IsGeminiError(err) {
 				s.Error = null.StringFrom(err.Error())
-				s.Header = null.StringFrom(errors.Unwrap(err).(*GeminiError).Header)
-				s.ResponseCode = null.IntFrom(int64(errors.Unwrap(err).(*GeminiError).Code))
+				s.Header = null.StringFrom(go_errors.Unwrap(err).(*GeminiError).Header)
+				s.ResponseCode = null.IntFrom(int64(go_errors.Unwrap(err).(*GeminiError).Code))
 				err = nil
 			} else {
 				s = nil
@@ -73,7 +73,7 @@ func Visit(url string) (s *snapshot.Snapshot, err error) {
 func ConnectAndGetData(url string) ([]byte, error) {
 	parsedURL, err := stdurl.Parse(url)
 	if err != nil {
-		return nil, errors.NewError(err)
+		return nil, go_errors.NewError(err)
 	}
 	hostname := parsedURL.Hostname()
 	port := parsedURL.Port()
@@ -148,7 +148,7 @@ func ConnectAndGetData(url string) ([]byte, error) {
 			return nil, errors2.NewHostError(err)
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if go_errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, errors2.NewHostError(err)
@@ -182,7 +182,7 @@ func processData(s snapshot.Snapshot, data []byte) (*snapshot.Snapshot, error) {
 	if mimeType == "text/gemini" {
 		validBody, err := BytesToValidUTF8(body)
 		if err != nil {
-			return nil, errors.NewError(err)
+			return nil, go_errors.NewError(err)
 		}
 		s.GemText = null.StringFrom(validBody)
 	} else {

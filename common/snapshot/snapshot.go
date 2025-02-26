@@ -5,7 +5,7 @@ import (
 
 	"gemini-grc/common/linkList"
 	commonUrl "gemini-grc/common/url"
-	"gemini-grc/errors"
+	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
 
@@ -27,7 +27,7 @@ type Snapshot struct {
 func SnapshotFromURL(u string, normalize bool) (*Snapshot, error) {
 	url, err := commonUrl.ParseURL(u, "", normalize)
 	if err != nil {
-		return nil, errors.NewError(err)
+		return nil, go_errors.NewError(err)
 	}
 	newSnapshot := Snapshot{
 		URL:       *url,
