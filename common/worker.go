@@ -9,11 +9,11 @@ import (
 	"gemini-grc/common/snapshot"
 	url2 "gemini-grc/common/url"
 	_db "gemini-grc/db"
-	"gemini-grc/errors"
 	"gemini-grc/gemini"
 	"gemini-grc/gopher"
 	"gemini-grc/hostPool"
 	"gemini-grc/logging"
+	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 	"github.com/jmoiron/sqlx"
 )
@@ -25,12 +25,12 @@ func CrawlOneURL(db *sqlx.DB, url *string) error {
 	}
 
 	if !url2.IsGeminiUrl(parsedURL.String()) && !url2.IsGopherURL(parsedURL.String()) {
-		return errors.NewError(fmt.Errorf("error parsing URL: not a Gemini or Gopher URL: %s", parsedURL.String()))
+		return go_errors.NewError(fmt.Errorf("error parsing URL: not a Gemini or Gopher URL: %s", parsedURL.String()))
 	}
 
 	tx, err := db.Beginx()
 	if err != nil {
-		return errors.NewFatalError(err)
+		return go_errors.NewFatalError(err)
 	}
 
 	err = _db.InsertURL(tx, parsedURL.Full)
@@ -49,9 +49,9 @@ func CrawlOneURL(db *sqlx.DB, url *string) error {
 		//	logging.LogError("Deadlock detected. Rolling back")
 		//	time.Sleep(time.Duration(10) * time.Second)
 		//	err := tx.Rollback()
-		//	return errors.NewFatalError(err)
+		//	return go_errors.NewFatalError(err)
 		//}
-		return errors.NewFatalError(err)
+		return go_errors.NewFatalError(err)
 	}
 	logging.LogInfo("Done")
 	return nil
@@ -156,7 +156,7 @@ func workOnUrl(workerID int, tx *sqlx.Tx, url string) (err error) {
 	isGemini := url2.IsGeminiUrl(s.URL.String())
 	isGopher := url2.IsGopherURL(s.URL.String())
 	if !isGemini && !isGopher {
-		return errors.NewError(fmt.Errorf("not a Gopher or Gemini URL: %s", s.URL.String()))
+		return go_errors.NewError(fmt.Errorf("not a Gopher or Gemini URL: %s", s.URL.String()))
 	}
 
 	if blackList.IsBlacklisted(s.URL.String()) {
@@ -270,14 +270,14 @@ func haveWeVisitedURL(tx *sqlx.Tx, u string) (bool, error) {
 	var result []bool
 	err := tx.Select(&result, `SELECT TRUE FROM urls WHERE url=$1`, u)
 	if err != nil {
-		return false, errors.NewFatalError(fmt.Errorf("database error: %w", err))
+		return false, go_errors.NewFatalError(fmt.Errorf("database error: %w", err))
 	}
 	if len(result) > 0 {
 		return result[0], nil
 	}
 	err = tx.Select(&result, `SELECT TRUE FROM snapshots WHERE snapshots.url=$1`, u)
 	if err != nil {
-		return false, errors.NewFatalError(fmt.Errorf("database error: %w", err))
+		return false, go_errors.NewFatalError(fmt.Errorf("database error: %w", err))
 	}
 	if len(result) > 0 {
 		return result[0], nil

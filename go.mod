@@ -3,6 +3,7 @@ module gemini-grc
 go 1.23.1
 
 require (
+	github.com/antanst/go_errors v0.0.1
 	github.com/guregu/null/v5 v5.0.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/jmoiron/sqlx v1.4.0

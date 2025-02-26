@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gemini-grc/errors"
+	"github.com/antanst/go_errors"
 )
 
 type URL struct {
@@ -29,7 +29,7 @@ func (u *URL) Scan(value interface{}) error {
 	}
 	b, ok := value.(string)
 	if !ok {
-		return errors.NewFatalError(fmt.Errorf("database scan error: expected string, got %T", value))
+		return go_errors.NewFatalError(fmt.Errorf("database scan error: expected string, got %T", value))
 	}
 	parsedURL, err := ParseURL(b, "", false)
 	if err != nil {
@@ -82,7 +82,7 @@ func ParseURL(input string, descr string, normalize bool) (*URL, error) {
 	} else {
 		u, err = url.Parse(input)
 		if err != nil {
-			return nil, errors.NewError(fmt.Errorf("error parsing URL: %w: %s", err, input))
+			return nil, go_errors.NewError(fmt.Errorf("error parsing URL: %w: %s", err, input))
 		}
 	}
 	protocol := u.Scheme
@@ -99,7 +99,7 @@ func ParseURL(input string, descr string, normalize bool) (*URL, error) {
 	}
 	port, err := strconv.Atoi(strPort)
 	if err != nil {
-		return nil, errors.NewError(fmt.Errorf("error parsing URL: %w: %s", err, input))
+		return nil, go_errors.NewError(fmt.Errorf("error parsing URL: %w: %s", err, input))
 	}
 	full := fmt.Sprintf("%s://%s:%d%s", protocol, hostname, port, urlPath)
 	// full field should also contain query params and url fragments
@@ -145,13 +145,13 @@ func NormalizeURL(rawURL string) (*url.URL, error) {
 	// Parse the URL
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, errors.NewError(fmt.Errorf("error normalizing URL: %w: %s", err, rawURL))
+		return nil, go_errors.NewError(fmt.Errorf("error normalizing URL: %w: %s", err, rawURL))
 	}
 	if u.Scheme == "" {
-		return nil, errors.NewError(fmt.Errorf("error normalizing URL: No scheme: %s", rawURL))
+		return nil, go_errors.NewError(fmt.Errorf("error normalizing URL: No scheme: %s", rawURL))
 	}
 	if u.Host == "" {
-		return nil, errors.NewError(fmt.Errorf("error normalizing URL: No host: %s", rawURL))
+		return nil, go_errors.NewError(fmt.Errorf("error normalizing URL: No host: %s", rawURL))
 	}
 
 	// Convert scheme to lowercase
@@ -275,7 +275,7 @@ func ExtractRedirectTargetFromHeader(currentURL URL, input string) (*URL, error)
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(input)
 	if len(matches) < 2 {
-		return nil, errors.NewError(fmt.Errorf("error extracting redirect target from string %s", input))
+		return nil, go_errors.NewError(fmt.Errorf("error extracting redirect target from string %s", input))
 	}
 	newURL, err := DeriveAbsoluteURL(currentURL, matches[1])
 	if err != nil {

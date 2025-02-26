@@ -10,8 +10,8 @@ import (
 	"gemini-grc/common/blackList"
 	"gemini-grc/config"
 	"gemini-grc/db"
-	"gemini-grc/errors"
 	"gemini-grc/logging"
+	"github.com/antanst/go_errors"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -24,8 +24,8 @@ func main() {
 	zlog.Logger = zlog.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "[2006-01-02 15:04:05]"})
 	err := runApp()
 	if err != nil {
-		var asErr *errors.Error
-		if errors.As(err, &asErr) {
+		var asErr *go_errors.Error
+		if go_errors.As(err, &asErr) {
 			logging.LogError("Unexpected error: %v", err)
 			_, _ = fmt.Fprintf(os.Stderr, "Unexpected error: %v", err)
 		} else {
@@ -73,7 +73,7 @@ func runApp() (err error) {
 			logging.LogWarn("Received SIGINT or SIGTERM signal, exiting")
 			return nil
 		case err := <-common.ErrorsChan:
-			if errors.IsFatal(err) {
+			if go_errors.IsFatal(err) {
 				return err
 			}
 			logging.LogError("%s", fmt.Sprintf("%v", err))

@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"gemini-grc/config"
-	"gemini-grc/errors"
 	"gemini-grc/logging"
+	"github.com/antanst/go_errors"
 )
 
 var Blacklist []regexp.Regexp //nolint:gochecknoglobals
@@ -21,7 +21,7 @@ func LoadBlacklist() error {
 		data, err := os.ReadFile(config.CONFIG.BlacklistPath)
 		if err != nil {
 			Blacklist = []regexp.Regexp{}
-			return errors.NewError(fmt.Errorf("could not load Blacklist file: %w", err))
+			return go_errors.NewError(fmt.Errorf("could not load Blacklist file: %w", err))
 		}
 
 		lines := strings.Split(string(data), "\n")
@@ -32,7 +32,7 @@ func LoadBlacklist() error {
 			}
 			regex, err := regexp.Compile(line)
 			if err != nil {
-				return errors.NewError(fmt.Errorf("could not compile Blacklist line %s: %w", line, err))
+				return go_errors.NewError(fmt.Errorf("could not compile Blacklist line %s: %w", line, err))
 			}
 			Blacklist = append(Blacklist, *regex)
 
