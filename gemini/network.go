@@ -17,6 +17,7 @@ import (
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
 	"gemini-grc/logging"
+
 	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
@@ -182,7 +183,7 @@ func processData(s snapshot.Snapshot, data []byte) (*snapshot.Snapshot, error) {
 	if mimeType == "text/gemini" {
 		validBody, err := BytesToValidUTF8(body)
 		if err != nil {
-			return nil, go_errors.NewError(err)
+			return nil, err
 		}
 		s.GemText = null.StringFrom(validBody)
 	} else {

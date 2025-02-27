@@ -13,9 +13,11 @@ import (
 	errors2 "gemini-grc/common/errors"
 	"gemini-grc/common/linkList"
 	"gemini-grc/common/snapshot"
+	"gemini-grc/common/text"
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
 	"gemini-grc/logging"
+
 	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
@@ -85,7 +87,7 @@ func Visit(url string) (*snapshot.Snapshot, error) {
 
 	isValidUTF8 := utf8.ValidString(string(data))
 	if isValidUTF8 {
-		s.GemText = null.StringFrom(removeNullChars(string(data)))
+		s.GemText = null.StringFrom(text.RemoveNullChars(string(data)))
 	} else {
 		s.Data = null.ValueFrom(data)
 	}
@@ -275,9 +277,4 @@ func getGopherPageLinks(content string) []string {
 	}
 
 	return links
-}
-
-func removeNullChars(input string) string {
-	// Replace all null characters with an empty string
-	return strings.ReplaceAll(input, "\u0000", "")
 }
