@@ -17,7 +17,6 @@ import (
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
 	"gemini-grc/logging"
-
 	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
@@ -217,17 +216,17 @@ func getMimeTypeAndLang(headers string) (int, string, string) {
 	// - Only capturing the lang value, ignoring charset
 	re := regexp.MustCompile(`^(\d+)\s+([a-zA-Z0-9/\-+]+)(?:(?:[\s;]+(?:charset=[^;\s]+|lang=([a-zA-Z0-9-]+)))*)\s*$`)
 	matches := re.FindStringSubmatch(headers)
-	if matches == nil || len(matches) <= 1 {
+	if len(matches) <= 1 {
 		// If full format doesn't match, try to match redirect format: "<code> <URL>"
 		// This handles cases like "31 gemini://example.com"
 		re := regexp.MustCompile(`^(\d+)\s+(.+)$`)
 		matches := re.FindStringSubmatch(headers)
-		if matches == nil || len(matches) <= 1 {
+		if len(matches) <= 1 {
 			// If redirect format doesn't match, try to match just a status code
 			// This handles cases like "99"
 			re := regexp.MustCompile(`^(\d+)\s*$`)
 			matches := re.FindStringSubmatch(headers)
-			if matches == nil || len(matches) <= 1 {
+			if len(matches) <= 1 {
 				return 0, "", ""
 			}
 			code, err := strconv.Atoi(matches[1])
