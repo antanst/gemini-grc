@@ -17,7 +17,6 @@ import (
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
 	"gemini-grc/logging"
-
 	"github.com/antanst/go_errors"
 	"github.com/guregu/null/v5"
 )
