@@ -2,6 +2,7 @@
 **/*~
 /.idea
 /.goroot
+/dist/**
 /blacklist.txt
 /check.sh
 /debug.sh

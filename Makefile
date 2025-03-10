@@ -4,7 +4,7 @@ export PATH := $(PATH)
 all: fmt lintfix tidy test clean build
 
 clean:
-	rm -f ./gemini-grc
+	rm -f ./dist && mkdir ./dist
 
 debug:
 	@echo "PATH: $(PATH)"
@@ -35,7 +35,7 @@ lintfix: fmt
 	golangci-lint run --fix
 
 build:
-	go build -race -o gemini-grc ./main.go
+	CGO_ENABLED=0 go build -o ./dist/gemini-grc ./main.go
 
 show-updates:
 	go list -m -u all
