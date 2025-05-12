@@ -1,6 +1,6 @@
 package gopher
 
-import "github.com/antanst/go_errors"
+import "errors"
 
 // GopherError is an error encountered while
 // visiting a Gopher host, and is only for
@@ -26,5 +26,5 @@ func IsGopherError(err error) bool {
 		return false
 	}
 	var asError *GopherError
-	return go_errors.As(err, &asError)
+	return errors.As(err, &asError)
 }
