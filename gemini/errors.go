@@ -1,9 +1,8 @@
 package gemini
 
 import (
+	"errors"
 	"fmt"
-
-	"github.com/antanst/go_errors"
 )
 
 // GeminiError is used to represent
@@ -18,6 +17,10 @@ type GeminiError struct {
 
 func (e *GeminiError) Error() string {
 	return fmt.Sprintf("gemini error: code %d %s", e.Code, e.Msg)
+}
+
+func (e *GeminiError) String() string {
+	return e.Error()
 }
 
 // NewGeminiError creates a new GeminiError based on the status code and header.
@@ -57,5 +60,5 @@ func IsGeminiError(err error) bool {
 		return false
 	}
 	var asError *GeminiError
-	return go_errors.As(err, &asError)
+	return errors.As(err, &asError)
 }
