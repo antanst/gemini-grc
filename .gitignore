@@ -14,5 +14,7 @@
 run*.sh
 /main
 /db/migration*/**
-/db/populate/**
+/cmd/populate/**
 /db/sql/**
+
+**/.claude/settings.local.json

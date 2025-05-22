@@ -1,10 +1,10 @@
-SHELL := /bin/env oksh
+SHELL := /bin/sh
 export PATH := $(PATH)
 
-all: fmt lintfix tidy test clean build
+all: fmt lintfix vet tidy test clean build
 
 clean:
-	rm -f ./dist && mkdir ./dist
+	mkdir -p ./dist && rm -rf ./dist/*
 
 debug:
 	@echo "PATH: $(PATH)"
@@ -30,12 +30,17 @@ fmt:
 lint: fmt
 	golangci-lint run
 
+vet: fmt
+	go vet ./.../
+
 # Run linter and fix
 lintfix: fmt
 	golangci-lint run --fix
 
 build:
-	CGO_ENABLED=0 go build -o ./dist/gemini-grc ./main.go
+	CGO_ENABLED=0 go build -o ./dist/get ./cmd/get/get.go
+	CGO_ENABLED=0 go build -o ./dist/crawl ./cmd/crawl/crawl.go
+	CGO_ENABLED=0 go build -o ./dist/crawler ./cmd/crawler/crawler.go
 
 show-updates:
 	go list -m -u all
