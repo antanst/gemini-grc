@@ -9,7 +9,7 @@ import (
 	url2 "gemini-grc/common/url"
 	"gemini-grc/logging"
 	"gemini-grc/util"
-	"github.com/antanst/go_errors"
+	"git.antanst.com/antanst/xerrors"
 )
 
 func GetPageLinks(currentURL url2.URL, gemtext string) linkList.LinkList {
@@ -37,14 +37,14 @@ func ParseGeminiLinkLine(linkLine string, currentURL string) (*url2.URL, error) 
 	// Check: currentURL is parseable
 	baseURL, err := url.Parse(currentURL)
 	if err != nil {
-		return nil, go_errors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine))
+		return nil, xerrors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine), 0, "", false)
 	}
 
 	// Extract the actual URL and the description
 	re := regexp.MustCompile(`^=>[ \t]+(\S+)([ \t]+.*)?`)
 	matches := re.FindStringSubmatch(linkLine)
 	if len(matches) == 0 {
-		return nil, go_errors.NewError(fmt.Errorf("error parsing link line: no regexp match for line %s", linkLine))
+		return nil, xerrors.NewError(fmt.Errorf("error parsing link line: no regexp match for line %s", linkLine), 0, "", false)
 	}
 
 	originalURLStr := matches[1]
@@ -52,7 +52,7 @@ func ParseGeminiLinkLine(linkLine string, currentURL string) (*url2.URL, error) 
 	// Check: Unescape the URL if escaped
 	_, err = url.QueryUnescape(originalURLStr)
 	if err != nil {
-		return nil, go_errors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine))
+		return nil, xerrors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine), 0, "", false)
 	}
 
 	description := ""
@@ -63,7 +63,7 @@ func ParseGeminiLinkLine(linkLine string, currentURL string) (*url2.URL, error) 
 	// Parse the URL from the link line
 	parsedURL, err := url.Parse(originalURLStr)
 	if err != nil {
-		return nil, go_errors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine))
+		return nil, xerrors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine), 0, "", false)
 	}
 
 	// If link URL is relative, resolve full URL
@@ -80,7 +80,7 @@ func ParseGeminiLinkLine(linkLine string, currentURL string) (*url2.URL, error) 
 
 	finalURL, err := url2.ParseURL(parsedURL.String(), description, true)
 	if err != nil {
-		return nil, go_errors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine))
+		return nil, xerrors.NewError(fmt.Errorf("error parsing link line: %w input '%s'", err, linkLine), 0, "", false)
 	}
 
 	return finalURL, nil

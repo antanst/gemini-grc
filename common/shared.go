@@ -1,11 +1,13 @@
 package common
 
+import "os"
+
+// FatalErrorsChan accepts errors from workers.
+// In case of fatal error, gracefully
+// exits the application.
 var (
-	StatusChan chan WorkerStatus
-	// ErrorsChan accepts errors from workers.
-	// In case of fatal error, gracefully
-	// exits the application.
-	ErrorsChan chan error
+	FatalErrorsChan chan error
+	SignalsChan     chan os.Signal
 )
 
 const VERSION string = "0.0.1"

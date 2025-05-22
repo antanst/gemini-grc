@@ -1,166 +1,93 @@
 package config
 
 import (
+	"flag"
 	"fmt"
+	"log/slog"
 	"os"
-	"strconv"
-
-	"github.com/rs/zerolog"
-)
-
-// Environment variable names.
-const (
-	EnvLogLevel               = "LOG_LEVEL"
-	EnvNumWorkers             = "NUM_OF_WORKERS"
-	EnvWorkerBatchSize        = "WORKER_BATCH_SIZE"
-	EnvMaxResponseSize        = "MAX_RESPONSE_SIZE"
-	EnvResponseTimeout        = "RESPONSE_TIMEOUT"
-	EnvPanicOnUnexpectedError = "PANIC_ON_UNEXPECTED_ERROR"
-	EnvBlacklistPath          = "BLACKLIST_PATH"
-	EnvDryRun                 = "DRY_RUN"
-	EnvPrintWorkerStatus      = "PRINT_WORKER_STATUS"
 )
 
 // Config holds the application configuration loaded from environment variables.
 type Config struct {
-	LogLevel               zerolog.Level // Logging level (debug, info, warn, error)
-	MaxResponseSize        int           // Maximum size of response in bytes
-	NumOfWorkers           int           // Number of concurrent workers
-	ResponseTimeout        int           // Timeout for responses in seconds
-	WorkerBatchSize        int           // Batch size for worker processing
-	PanicOnUnexpectedError bool          // Panic on unexpected errors when visiting a URL
-	BlacklistPath          string        // File that has blacklisted strings of "host:port"
-	DryRun                 bool          // If false, don't write to disk
-	PrintWorkerStatus      bool          // If false, don't print worker status table
+	PgURL                string
+	LogLevel             slog.Level // Logging level (debug, info, warn, error)
+	MaxResponseSize      int        // Maximum size of response in bytes
+	MaxDbConnections     int        // Maximum number of database connections.
+	NumOfWorkers         int        // Number of concurrent workers
+	ResponseTimeout      int        // Timeout for responses in seconds
+	BlacklistPath        string     // File that has blacklisted strings of "host:port"
+	WhitelistPath        string     // File with URLs that should always be crawled regardless of blacklist
+	DryRun               bool       // If false, don't write to disk
+	GopherEnable         bool       // Enable Gopher crawling
+	SeedUrlPath          string     // Add URLs from file to queue
+	SkipIdenticalContent bool       // When true, skip storing snapshots with identical content
+	SkipIfUpdatedDays    int        // Skip re-crawling URLs updated within this many days (0 to disable, default 0)
 }
 
 var CONFIG Config //nolint:gochecknoglobals
 
-// parsePositiveInt parses and validates positive integer values.
-func parsePositiveInt(param, value string) (int, error) {
-	val, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, ValidationError{
-			Param:  param,
-			Value:  value,
-			Reason: "must be a valid integer",
-		}
-	}
-	if val <= 0 {
-		return 0, ValidationError{
-			Param:  param,
-			Value:  value,
-			Reason: "must be positive",
-		}
-	}
-	return val, nil
-}
-
-func parseBool(param, value string) (bool, error) {
-	val, err := strconv.ParseBool(value)
-	if err != nil {
-		return false, ValidationError{
-			Param:  param,
-			Value:  value,
-			Reason: "cannot be converted to boolean",
-		}
-	}
-	return val, nil
-}
-
-// GetConfig loads and validates configuration from environment variables
-func GetConfig() *Config {
+// Initialize loads and validates configuration from environment variables
+func Initialize() *Config {
 	config := &Config{}
 
-	// Map of environment variables to their parsing functions
-	parsers := map[string]func(string) error{
-		EnvLogLevel: func(v string) error {
-			level, err := zerolog.ParseLevel(v)
-			if err != nil {
-				return ValidationError{
-					Param:  EnvLogLevel,
-					Value:  v,
-					Reason: "must be one of: debug, info, warn, error",
-				}
-			}
-			config.LogLevel = level
-			return nil
-		},
-		EnvNumWorkers: func(v string) error {
-			val, err := parsePositiveInt(EnvNumWorkers, v)
-			if err != nil {
-				return err
-			}
-			config.NumOfWorkers = val
-			return nil
-		},
-		EnvWorkerBatchSize: func(v string) error {
-			val, err := parsePositiveInt(EnvWorkerBatchSize, v)
-			if err != nil {
-				return err
-			}
-			config.WorkerBatchSize = val
-			return nil
-		},
-		EnvMaxResponseSize: func(v string) error {
-			val, err := parsePositiveInt(EnvMaxResponseSize, v)
-			if err != nil {
-				return err
-			}
-			config.MaxResponseSize = val
-			return nil
-		},
-		EnvResponseTimeout: func(v string) error {
-			val, err := parsePositiveInt(EnvResponseTimeout, v)
-			if err != nil {
-				return err
-			}
-			config.ResponseTimeout = val
-			return nil
-		},
-		EnvPanicOnUnexpectedError: func(v string) error {
-			val, err := parseBool(EnvPanicOnUnexpectedError, v)
-			if err != nil {
-				return err
-			}
-			config.PanicOnUnexpectedError = val
-			return nil
-		},
-		EnvBlacklistPath: func(v string) error {
-			config.BlacklistPath = v
-			return nil
-		},
-		EnvDryRun: func(v string) error {
-			val, err := parseBool(EnvDryRun, v)
-			if err != nil {
-				return err
-			}
-			config.DryRun = val
-			return nil
-		},
-		EnvPrintWorkerStatus: func(v string) error {
-			val, err := parseBool(EnvPrintWorkerStatus, v)
-			if err != nil {
-				return err
-			}
-			config.PrintWorkerStatus = val
-			return nil
-		},
-	}
+	loglevel := flag.String("log-level", "info", "Logging level (debug, info, warn, error)")
+	pgURL := flag.String("pgurl", "", "Postgres URL")
+	dryRun := flag.Bool("dry-run", false, "Dry run mode (default false)")
+	gopherEnable := flag.Bool("gopher", false, "Enable crawling of Gopher holes (default false)")
+	maxDbConnections := flag.Int("max-db-connections", 100, "Maximum number of database connections (default 100)")
+	numOfWorkers := flag.Int("workers", 1, "Number of concurrent workers (default 1)")
+	maxResponseSize := flag.Int("max-response-size", 1024*1024, "Maximum size of response in bytes (default 1MB)")
+	responseTimeout := flag.Int("response-timeout", 10, "Timeout for network responses in seconds (default 10)")
+	blacklistPath := flag.String("blacklist-path", "", "File that has blacklist regexes")
+	skipIdenticalContent := flag.Bool("skip-identical-content", true, "Skip storing snapshots with identical content (default true)")
+	skipIfUpdatedDays := flag.Int("skip-if-updated-days", 60, "Skip re-crawling URLs updated within this many days (0 to disable, default 60)")
+	whitelistPath := flag.String("whitelist-path", "", "File with URLs that should always be crawled regardless of blacklist")
+	seedUrlPath := flag.String("seed-url-path", "", "File with seed URLs that should be added to the queue immediatelly")
 
-	// Process each environment variable
-	for envVar, parser := range parsers {
-		value, ok := os.LookupEnv(envVar)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Missing required environment variable: %s\n", envVar)
-			os.Exit(1)
-		}
+	flag.Parse()
 
-		if err := parser(value); err != nil {
-			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-			os.Exit(1)
-		}
+	config.PgURL = *pgURL
+	config.DryRun = *dryRun
+	config.GopherEnable = *gopherEnable
+	config.NumOfWorkers = *numOfWorkers
+	config.MaxResponseSize = *maxResponseSize
+	config.ResponseTimeout = *responseTimeout
+	config.BlacklistPath = *blacklistPath
+	config.WhitelistPath = *whitelistPath
+	config.SeedUrlPath = *seedUrlPath
+	config.MaxDbConnections = *maxDbConnections
+	config.SkipIdenticalContent = *skipIdenticalContent
+	config.SkipIfUpdatedDays = *skipIfUpdatedDays
+
+	level, err := ParseSlogLevel(*loglevel)
+	if err != nil {
+		_, _ = fmt.Fprint(os.Stderr, err.Error())
+		os.Exit(-1)
 	}
+	config.LogLevel = level
 
 	return config
+}
+
+// ParseSlogLevel converts a string level to slog.Level
+func ParseSlogLevel(levelStr string) (slog.Level, error) {
+	switch levelStr {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelInfo, fmt.Errorf("invalid log level: %s", levelStr)
+	}
+}
+
+// Convert method for backward compatibility with existing codebase
+// This can be removed once all references to Convert() are updated
+func (c *Config) Convert() *Config {
+	// Just return the config itself as it now directly contains slog.Level
+	return c
 }

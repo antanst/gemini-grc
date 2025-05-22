@@ -7,7 +7,7 @@ import (
 	"io"
 	"unicode/utf8"
 
-	"github.com/antanst/go_errors"
+	"git.antanst.com/antanst/xerrors"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/encoding/korean"
@@ -25,7 +25,7 @@ func BytesToValidUTF8(input []byte) (string, error) {
 	}
 	const maxSize = 10 * 1024 * 1024 // 10MB
 	if len(input) > maxSize {
-		return "", go_errors.NewError(fmt.Errorf("%w: %d bytes (max %d)", ErrInputTooLarge, len(input), maxSize))
+		return "", xerrors.NewError(fmt.Errorf("%w: %d bytes (max %d)", ErrInputTooLarge, len(input), maxSize), 0, "", false)
 	}
 	// remove NULL byte 0x00 (ReplaceAll accepts slices)
 	inputNoNull := bytes.ReplaceAll(input, []byte{byte(0)}, []byte{})
@@ -56,5 +56,5 @@ func BytesToValidUTF8(input []byte) (string, error) {
 		}
 	}
 
-	return "", go_errors.NewError(fmt.Errorf("%w (tried %d encodings): %w", ErrUTF8Conversion, len(encodings), lastErr))
+	return "", xerrors.NewError(fmt.Errorf("%w (tried %d encodings): %w", ErrUTF8Conversion, len(encodings), lastErr), 0, "", false)
 }

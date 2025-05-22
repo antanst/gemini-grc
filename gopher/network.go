@@ -1,6 +1,7 @@
 package gopher
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -8,17 +9,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	errors2 "gemini-grc/common/errors"
-	"gemini-grc/common/linkList"
-	"gemini-grc/common/snapshot"
-	"gemini-grc/common/text"
-	_url "gemini-grc/common/url"
+	commonErrors "gemini-grc/common/errors"
 	"gemini-grc/config"
 	"gemini-grc/logging"
-	"github.com/antanst/go_errors"
-	"github.com/guregu/null/v5"
+	"git.antanst.com/antanst/xerrors"
 )
 
 // References:
@@ -62,64 +57,10 @@ import (
 // The original Gopher protocol only specified types 0-9, `+`, `g`, `I`, and `T`.
 // The others were added by various implementations and extensions over time.
 
-// Error methodology:
-// HostError for DNS/network errors
-// GopherError for network/gopher errors
-// NewError for other errors
-// NewFatalError for other fatal errors
-
-func Visit(url string) (*snapshot.Snapshot, error) {
-	s, err := snapshot.SnapshotFromURL(url, false)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := connectAndGetData(url)
-	if err != nil {
-		logging.LogDebug("Error: %s", err.Error())
-		if IsGopherError(err) || errors2.IsHostError(err) {
-			s.Error = null.StringFrom(err.Error())
-			return s, nil
-		}
-		return nil, err
-	}
-
-	isValidUTF8 := utf8.ValidString(string(data))
-	if isValidUTF8 {
-		s.GemText = null.StringFrom(text.RemoveNullChars(string(data)))
-	} else {
-		s.Data = null.ValueFrom(data)
-	}
-
-	if !isValidUTF8 {
-		return s, nil
-	}
-
-	responseError := checkForError(string(data))
-	if responseError != nil {
-		s.Error = null.StringFrom(responseError.Error())
-		return s, nil
-	}
-
-	links := getGopherPageLinks(string(data))
-	linkURLs := linkList.LinkList(make([]_url.URL, len(links)))
-	for i, link := range links {
-		linkURL, err := _url.ParseURL(link, "", true)
-		if err == nil {
-			linkURLs[i] = *linkURL
-		}
-	}
-	if len(links) != 0 {
-		s.Links = null.ValueFrom(linkURLs)
-	}
-
-	return s, nil
-}
-
 func connectAndGetData(url string) ([]byte, error) {
 	parsedURL, err := stdurl.Parse(url)
 	if err != nil {
-		return nil, go_errors.NewError(err)
+		return nil, xerrors.NewError(fmt.Errorf("error parsing URL: %w", err), 0, "", false)
 	}
 
 	hostname := parsedURL.Hostname()
@@ -136,7 +77,7 @@ func connectAndGetData(url string) ([]byte, error) {
 	logging.LogDebug("Dialing %s", host)
 	conn, err := dialer.Dial("tcp", host)
 	if err != nil {
-		return nil, errors2.NewHostError(err)
+		return nil, commonErrors.NewHostError(err)
 	}
 	// Make sure we always close the connection.
 	defer func() {
@@ -146,11 +87,11 @@ func connectAndGetData(url string) ([]byte, error) {
 	// Set read and write timeouts on the TCP connection.
 	err = conn.SetReadDeadline(time.Now().Add(timeoutDuration))
 	if err != nil {
-		return nil, errors2.NewHostError(err)
+		return nil, commonErrors.NewHostError(err)
 	}
 	err = conn.SetWriteDeadline(time.Now().Add(timeoutDuration))
 	if err != nil {
-		return nil, errors2.NewHostError(err)
+		return nil, commonErrors.NewHostError(err)
 	}
 
 	// We read `buf`-sized chunks and add data to `data`.
@@ -161,7 +102,7 @@ func connectAndGetData(url string) ([]byte, error) {
 	payload := constructPayloadFromPath(parsedURL.Path)
 	_, err = conn.Write([]byte(fmt.Sprintf("%s\r\n", payload)))
 	if err != nil {
-		return nil, errors2.NewHostError(err)
+		return nil, commonErrors.NewHostError(err)
 	}
 	// Read response bytes in len(buf) byte chunks
 	for {
@@ -170,13 +111,13 @@ func connectAndGetData(url string) ([]byte, error) {
 			data = append(data, buf[:n]...)
 		}
 		if err != nil {
-			if go_errors.Is(err, io.EOF) {
+			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, errors2.NewHostError(err)
+			return nil, commonErrors.NewHostError(err)
 		}
 		if len(data) > config.CONFIG.MaxResponseSize {
-			return nil, errors2.NewHostError(fmt.Errorf("response exceeded max"))
+			return nil, commonErrors.NewHostError(fmt.Errorf("response exceeded max"))
 		}
 	}
 	logging.LogDebug("Got %d bytes", len(data))

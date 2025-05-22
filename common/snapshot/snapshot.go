@@ -5,12 +5,12 @@ import (
 
 	"gemini-grc/common/linkList"
 	commonUrl "gemini-grc/common/url"
-	"github.com/antanst/go_errors"
+	"git.antanst.com/antanst/xerrors"
 	"github.com/guregu/null/v5"
 )
 
 type Snapshot struct {
-	ID           int                           `db:"ID" json:"ID,omitempty"`
+	ID           int                           `db:"id" json:"ID,omitempty"`
 	URL          commonUrl.URL                 `db:"url" json:"url,omitempty"`
 	Host         string                        `db:"host" json:"host,omitempty"`
 	Timestamp    null.Time                     `db:"timestamp" json:"timestamp,omitempty"`
@@ -27,7 +27,7 @@ type Snapshot struct {
 func SnapshotFromURL(u string, normalize bool) (*Snapshot, error) {
 	url, err := commonUrl.ParseURL(u, "", normalize)
 	if err != nil {
-		return nil, go_errors.NewError(err)
+		return nil, xerrors.NewError(err, 0, "", false)
 	}
 	newSnapshot := Snapshot{
 		URL:       *url,

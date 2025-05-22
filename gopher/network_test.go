@@ -288,7 +288,7 @@ func TestConnectAndGetDataTimeout(t *testing.T) {
 	// Check if the error is due to timeout
 	if err == nil {
 		t.Error("Expected an error due to timeout, but got no error")
-	} else if !errors.IsHostError(err) {
+	} else if !commonErrors.IsHostError(err) {
 		t.Errorf("Expected a HostError, but got: %v", err)
 	} else {
 		// Here you might want to check if the specific error message contains 'timeout'
