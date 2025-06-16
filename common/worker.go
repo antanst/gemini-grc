@@ -195,16 +195,15 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 		}
 	}
 
-	// Check if content is identical to previous snapshot and we should skip further processing
-	if config.CONFIG.SkipIdenticalContent {
-		identical, err := gemdb.Database.IsContentIdentical(ctx, tx, s)
-		if err != nil {
-			return err
-		}
-		if identical {
-			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, skipping")
-			return removeURL(ctx, tx, s.URL.String())
-		}
+	// Check if we should skip a potentially
+	// identical snapshot
+	skipIdentical, err := shouldSkipIdenticalSnapshot(ctx, tx, s)
+	if err != nil {
+		return err
+	}
+	if skipIdentical {
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, skipping")
+		return removeURL(ctx, tx, s.URL.String())
 	}
 
 	// Process and store links since content has changed
@@ -223,6 +222,32 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
 	}
 	return saveSnapshotAndRemoveURL(ctx, tx, s)
+}
+
+func shouldSkipIdenticalSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) (bool, error) {
+	// Check if content is identical to previous snapshot and we should skip further processing
+	if config.CONFIG.SkipIdenticalContent {
+		identical, err := gemdb.Database.IsContentIdentical(ctx, tx, s)
+		if err != nil {
+			return false, err
+		}
+		if identical {
+			return true, nil
+		}
+	}
+	// We write every Gemini capsule, but still
+	// skip identical pages that aren't capsules.
+	if s.MimeType.String != "text/gemini" {
+		identical, err := gemdb.Database.IsContentIdentical(ctx, tx, s)
+		if err != nil {
+			return false, err
+		}
+		if identical {
+			return true, nil
+		}
+
+	}
+	return false, nil
 }
 
 // storeLinks checks and stores the snapshot links in the database.

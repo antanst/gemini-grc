@@ -107,25 +107,59 @@ latestSnapshot, err := Database.GetLatestSnapshot(ctx, tx, "gemini://example.com
 tx.Commit()
 ```
 
-### Optimizations
+### Content Deduplication Strategy
 
-1. **Content Deduplication**: The crawler can avoid storing duplicate content in the database. When content deduplication is enabled (by setting `--skip-identical-content=true`), the system implements two key behaviors:
+The crawler implements a sophisticated content deduplication strategy that balances storage efficiency with comprehensive historical tracking:
 
-   * **Content-based deduplication**: It compares the content with the latest existing snapshot for the same URL before saving. If the content is identical, the new snapshot is skipped, saving storage space. However, if the content has changed, a new snapshot is still created, preserving the version history.
+#### `--skip-identical-content` Flag Behavior
 
-   When deduplication is disabled (default, `--skip-identical-content=false`), the system stores every snapshot regardless of content similarity and may re-queue URLs that already have snapshots, leading to more frequent re-crawling of all content.
+**When `--skip-identical-content=true` (default)**:
+- All content types are checked for duplicates before storing
+- Identical content is skipped entirely to save storage space
+- Only changed content results in new snapshots
+- Applies to both Gemini and non-Gemini content uniformly
 
-   This approach ensures that the version history for URLs with changing content is always preserved, regardless of the flag setting. The flag only controls whether to store snapshots when content hasn't changed.
+**When `--skip-identical-content=false`**:
+- **Gemini content (`text/gemini` MIME type)**: Full historical tracking - every crawl creates a new snapshot regardless of content changes
+- **Non-Gemini content**: Still deduplicated - identical content is skipped even when flag is false
+- Enables comprehensive version history for Gemini capsules while avoiding unnecessary storage of duplicate static assets
 
-2. **Time-based Crawl Frequency Control**: The crawler can be configured to skip re-crawling URLs that have been recently updated, using the `--skip-if-updated-days=N` parameter:
+#### Implementation Details
 
-   * When set to a positive integer N, URLs that have a snapshot newer than N days ago will not be added to the crawl queue, even if they're found as links in other pages.
+The deduplication logic is implemented in `shouldSkipIdenticalSnapshot()` function in `common/worker.go`:
 
-   * This feature helps control crawl frequency, ensuring that resources aren't wasted on frequently checking content that rarely changes.
+1. **Primary Check**: When `--skip-identical-content=true`, all content is checked for duplicates
+2. **MIME-Type Specific Check**: When the flag is false, only non-`text/gemini` content is checked for duplicates
+3. **Content Comparison**: Uses `IsContentIdentical()` which compares either GemText fields or binary Data fields
+4. **Dual Safety Checks**: Content is checked both in the worker layer and database layer for robustness
 
-   * Setting `--skip-if-updated-days=0` (the default) disables this feature, meaning all discovered URLs will be queued for crawling regardless of when they were last updated.
+This approach ensures that Gemini capsules get complete version history when desired, while preventing storage bloat from duplicate images, binaries, and other static content.
 
-   * For example, `--skip-if-updated-days=7` will skip re-crawling any URL that has been crawled within the last week.
+### Time-based Crawl Frequency Control
+
+The crawler can be configured to skip re-crawling URLs that have been recently updated, using the `--skip-if-updated-days=N` parameter:
+
+* When set to a positive integer N, URLs that have a snapshot newer than N days ago will not be added to the crawl queue, even if they're found as links in other pages.
+* This feature helps control crawl frequency, ensuring that resources aren't wasted on frequently checking content that rarely changes.
+* Setting `--skip-if-updated-days=0` disables this feature, meaning all discovered URLs will be queued for crawling regardless of when they were last updated.
+* Default value is 60 days.
+* For example, `--skip-if-updated-days=7` will skip re-crawling any URL that has been crawled within the last week.
+
+### Worker Pool Architecture
+
+The crawler uses a sophisticated worker pool system with backpressure control:
+
+* **Buffered Channel**: Job queue size equals the number of workers (`NumOfWorkers`)
+* **Self-Regulating**: Channel backpressure naturally rate-limits the scheduler
+* **Context-Aware**: Each URL gets its own context with timeout (default 120s)
+* **Transaction Per Job**: Each worker operates within its own database transaction
+* **SafeRollback**: Uses `gemdb.SafeRollback()` for graceful transaction cleanup on errors
+
+### Database Transaction Patterns
+
+* **Context Separation**: Scheduler uses long-lived context, while database operations use fresh contexts
+* **Timeout Prevention**: Fresh `dbCtx := context.Background()` prevents scheduler timeouts from affecting DB operations
+* **Error Handling**: Distinguishes between context cancellation, fatal errors, and recoverable errors
 
 ### Future Improvements
 
