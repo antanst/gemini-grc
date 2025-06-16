@@ -3,8 +3,9 @@ module gemini-grc
 go 1.24.3
 
 require (
+	git.antanst.com/antanst/logging v0.0.1
 	git.antanst.com/antanst/uid v0.0.1
-	git.antanst.com/antanst/xerrors v0.0.1
+	git.antanst.com/antanst/xerrors v0.0.2
 	github.com/guregu/null/v5 v5.0.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/jmoiron/sqlx v1.4.0
@@ -29,3 +30,5 @@ require (
 replace git.antanst.com/antanst/xerrors => ../xerrors
 
 replace git.antanst.com/antanst/uid => ../uid
+
+replace git.antanst.com/antanst/logging => ../logging

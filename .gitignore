@@ -1,5 +1,6 @@
 **/.#*
 **/*~
+**/.DS_Store
 /.idea
 /.goroot
 /dist/**
@@ -18,3 +19,11 @@ run*.sh
 /db/sql/**
 
 **/.claude/settings.local.json
+
+/crawl.sh
+/crawler.sh
+/get.sh
+/snapshot_history.sh
+/whitelist.txt
+
+/CLAUDE.md

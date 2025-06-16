@@ -117,7 +117,7 @@ func TestURLOperations(t *testing.T) {
 		}
 	})
 
-	t.Run("NormalizeURL", func(t *testing.T) {
+	t.Run("CheckAndUpdateNormalizedURL", func(t *testing.T) {
 		t.Parallel()
 
 		tests := []struct {

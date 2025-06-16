@@ -19,6 +19,13 @@ CREATE UNIQUE INDEX idx_url_timestamp ON snapshots (url, timestamp);
 CREATE INDEX idx_url_latest ON snapshots (url, timestamp DESC);
 ```
 
+## Error handling
+- `xerrors` library is used for error creation/wrapping.
+- The "Fatal" field is not used, we _always_ panic on fatal errors.
+- _All_ internal functions _must_ return `xerror` errors.
+- _All_ external errors are wrapped within `xerror` errors.
+
+
 ### Code Changes
 
 1. **Updated SQL Queries**:

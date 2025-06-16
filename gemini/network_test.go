@@ -135,17 +135,7 @@ func TestProcessData(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			s := snapshot.Snapshot{}
-			result, err := ProcessData(s, test.inputData)
-
-			if test.expectedError && err == nil {
-				t.Errorf("Expected error, got nil")
-				return
-			}
-
-			if !test.expectedError && err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
-			}
+			result := UpdateSnapshotWithData(s, test.inputData)
 
 			if test.expectedError {
 				return

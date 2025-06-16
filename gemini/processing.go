@@ -7,6 +7,7 @@ import (
 	"io"
 	"unicode/utf8"
 
+	"gemini-grc/config"
 	"git.antanst.com/antanst/xerrors"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/japanese"
@@ -23,11 +24,16 @@ func BytesToValidUTF8(input []byte) (string, error) {
 	if len(input) == 0 {
 		return "", nil
 	}
-	const maxSize = 10 * 1024 * 1024 // 10MB
-	if len(input) > maxSize {
-		return "", xerrors.NewError(fmt.Errorf("%w: %d bytes (max %d)", ErrInputTooLarge, len(input), maxSize), 0, "", false)
+
+	maxSize := config.CONFIG.MaxResponseSize
+	if maxSize == 0 {
+		maxSize = 1024 * 1024 // Default 1MB for tests
 	}
-	// remove NULL byte 0x00 (ReplaceAll accepts slices)
+	if len(input) > maxSize {
+		return "", xerrors.NewError(fmt.Errorf("BytesToValidUTF8: %w: %d bytes (max %d)", ErrInputTooLarge, len(input), maxSize), 0, "", false)
+	}
+
+	// Always remove NULL bytes first (before UTF-8 validity check)
 	inputNoNull := bytes.ReplaceAll(input, []byte{byte(0)}, []byte{})
 	if utf8.Valid(inputNoNull) {
 		return string(inputNoNull), nil
@@ -42,6 +48,8 @@ func BytesToValidUTF8(input []byte) (string, error) {
 		japanese.EUCJP.NewDecoder(),      // Japanese
 		korean.EUCKR.NewDecoder(),        // Korean
 	}
+
+	// Still invalid Unicode. Try some encodings to convert to.
 	// First successful conversion wins.
 	var lastErr error
 	for _, encoding := range encodings {
@@ -56,5 +64,5 @@ func BytesToValidUTF8(input []byte) (string, error) {
 		}
 	}
 
-	return "", xerrors.NewError(fmt.Errorf("%w (tried %d encodings): %w", ErrUTF8Conversion, len(encodings), lastErr), 0, "", false)
+	return "", xerrors.NewError(fmt.Errorf("BytesToValidUTF8: %w (tried %d encodings): %w", ErrUTF8Conversion, len(encodings), lastErr), 0, "", false)
 }

@@ -12,7 +12,7 @@ import (
 
 	commonErrors "gemini-grc/common/errors"
 	"gemini-grc/config"
-	"gemini-grc/logging"
+	"git.antanst.com/antanst/logging"
 	"git.antanst.com/antanst/xerrors"
 )
 

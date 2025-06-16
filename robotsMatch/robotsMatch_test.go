@@ -2,7 +2,6 @@ package robotsMatch
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
@@ -32,15 +31,7 @@ func TestRobotMatch_EmptyCache(t *testing.T) {
 
 	// For empty cache or DNS errors, RobotMatch should return false (allow the URL) without an error
 	ctx := context.Background()
-	blocked, err := RobotMatch(ctx, "gemini://nonexistent.example.com/")
-	// We expect no error for non-existent host because we changed our error handling
-	// to be more tolerant of DNS/connectivity issues
-	if err != nil {
-		// The only errors we should get are context-related (timeout, cancellation)
-		if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-			t.Errorf("Expected nil error for non-existent host, got: %v", err)
-		}
-	}
+	blocked := RobotMatch(ctx, "gemini://nonexistent.example.com/")
 
 	// The URL should be allowed (not blocked) when robots.txt can't be fetched
 	if blocked {

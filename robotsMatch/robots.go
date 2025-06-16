@@ -7,7 +7,7 @@ import (
 
 	"gemini-grc/common/contextlog"
 	"gemini-grc/contextutil"
-	"gemini-grc/logging"
+	"git.antanst.com/antanst/logging"
 )
 
 // ParseRobotsTxt takes robots.txt content and a host, and

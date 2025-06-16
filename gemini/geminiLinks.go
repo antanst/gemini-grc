@@ -7,8 +7,8 @@ import (
 
 	"gemini-grc/common/linkList"
 	url2 "gemini-grc/common/url"
-	"gemini-grc/logging"
 	"gemini-grc/util"
+	"git.antanst.com/antanst/logging"
 	"git.antanst.com/antanst/xerrors"
 )
 

@@ -18,7 +18,7 @@ import (
 	_url "gemini-grc/common/url"
 	"gemini-grc/config"
 	"gemini-grc/contextutil"
-	"gemini-grc/logging"
+	"git.antanst.com/antanst/logging"
 	"git.antanst.com/antanst/xerrors"
 	"github.com/guregu/null/v5"
 )
@@ -29,8 +29,6 @@ import (
 func VisitWithContext(ctx context.Context, url string) (*snapshot.Snapshot, error) {
 	// Create a gopher-specific context with the "gopher" component
 	gopherCtx := contextutil.ContextWithComponent(ctx, "gopher")
-
-	contextlog.LogDebugWithContext(gopherCtx, logging.GetSlogger(), "Visiting Gopher URL: %s", url)
 
 	if !config.CONFIG.GopherEnable {
 		contextlog.LogDebugWithContext(gopherCtx, logging.GetSlogger(), "Gopher protocol is disabled")

@@ -1,0 +1,10 @@
+gemini://geminiprotocol.net/
+gemini://warmedal.se/~antenna/
+gemini://skyjake.fi/~Cosmos/
+gemini://gemini.circumlunar.space/capcom/
+gemini://auragem.letz.dev/
+gemini://gemplex.space/
+gemini://kennedy.gemi.dev/
+gemini://tlgs.one/
+gemini://yesterday.gemlog.org/
+gemini://gemini.cyberbot.space/feed.gmi

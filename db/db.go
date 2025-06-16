@@ -16,7 +16,7 @@ import (
 	commonUrl "gemini-grc/common/url"
 	"gemini-grc/config"
 	"gemini-grc/contextutil"
-	"gemini-grc/logging"
+	"git.antanst.com/antanst/logging"
 	"git.antanst.com/antanst/xerrors"
 	"github.com/guregu/null/v5"
 	_ "github.com/jackc/pgx/v5/stdlib" // PGX driver for PostgreSQL
@@ -32,7 +32,7 @@ type DbService interface {
 
 	// URL methods
 	InsertURL(ctx context.Context, tx *sqlx.Tx, url string) error
-	NormalizeURL(ctx context.Context, tx *sqlx.Tx, url string, normalizedURL string) error
+	CheckAndUpdateNormalizedURL(ctx context.Context, tx *sqlx.Tx, url string, normalizedURL string) error
 	DeleteURL(ctx context.Context, tx *sqlx.Tx, url string) error
 	MarkURLsAsBeingProcessed(ctx context.Context, tx *sqlx.Tx, urls []string) error
 	GetUrlHosts(ctx context.Context, tx *sqlx.Tx) ([]string, error)
@@ -117,10 +117,13 @@ func (d *DbServiceImpl) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown the database with context
 func (d *DbServiceImpl) Shutdown(ctx context.Context) error {
 	dbCtx := contextutil.ContextWithComponent(ctx, "database")
-	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Shutting down database connection")
+	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Shutting down database connections")
+	_, err := d.db.Query("UPDATE urls SET being_processed=false")
+	if err != nil {
+		contextlog.LogErrorWithContext(dbCtx, logging.GetSlogger(), "Unable to update urls table: %v", err)
+	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -129,12 +132,11 @@ func (d *DbServiceImpl) Shutdown(ctx context.Context) error {
 		return nil
 	}
 
-	// Check if the context is cancelled before proceeding
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	err := d.db.Close()
+	err = d.db.Close()
 	if err != nil {
 		contextlog.LogErrorWithContext(dbCtx, logging.GetSlogger(), "Error closing database connection: %v", err)
 	} else {
@@ -154,7 +156,6 @@ func (d *DbServiceImpl) NewTx(ctx context.Context) (*sqlx.Tx, error) {
 		return nil, err
 	}
 
-	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Creating new database transaction")
 	tx, err := d.db.BeginTxx(ctx, nil)
 	if err != nil {
 		contextlog.LogErrorWithContext(dbCtx, logging.GetSlogger(), "Failed to create transaction: %v", err)
@@ -199,7 +200,7 @@ func (d *DbServiceImpl) InsertURL(ctx context.Context, tx *sqlx.Tx, url string) 
 }
 
 // NormalizeURL normalizes a URL with context
-func (d *DbServiceImpl) NormalizeURL(ctx context.Context, tx *sqlx.Tx, url string, normalizedURL string) error {
+func (d *DbServiceImpl) CheckAndUpdateNormalizedURL(ctx context.Context, tx *sqlx.Tx, url string, normalizedURL string) error {
 	dbCtx := contextutil.ContextWithComponent(ctx, "database")
 
 	// Check if URLs are already the same
@@ -214,7 +215,6 @@ func (d *DbServiceImpl) NormalizeURL(ctx context.Context, tx *sqlx.Tx, url strin
 
 	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Updating normalized URL %s -> %s", url, normalizedURL)
 
-	// Context-aware implementation
 	query := SQL_UPDATE_URL
 	a := struct {
 		Url           string `db:"Url"`
@@ -514,12 +514,13 @@ func (d *DbServiceImpl) IsContentIdentical(ctx context.Context, tx *sqlx.Tx, s *
 		return false, err
 	}
 
-	// Context-aware implementation
+	// Update: Skipped this because empty pages can be valid
+	// ex. pages with redirect headers
 	// Only check for identical content if we have gemtext or data
-	if (!s.GemText.Valid || s.GemText.String == "") &&
-		(!s.Data.Valid || len(s.Data.V) == 0) {
-		return false, nil
-	}
+	//if (!s.GemText.Valid || s.GemText.String == "") &&
+	//	(!s.Data.Valid || len(s.Data.V) == 0) {
+	//	return false, nil
+	//}
 
 	// Try to get the latest snapshot for this URL
 	latestSnapshot := &snapshot.Snapshot{}
@@ -545,4 +546,21 @@ func (d *DbServiceImpl) IsContentIdentical(ctx context.Context, tx *sqlx.Tx, s *
 	}
 
 	return false, nil
+}
+
+// SafeRollback attempts to roll back a transaction,
+// handling the case if the tx was already finalized.
+func SafeRollback(ctx context.Context, tx *sqlx.Tx) error {
+	rollbackErr := tx.Rollback()
+	if rollbackErr != nil {
+		// Check if it's the standard "transaction already finalized" error
+		if errors.Is(rollbackErr, sql.ErrTxDone) {
+			contextlog.LogWarnWithContext(ctx, logging.GetSlogger(), "Rollback failed because transaction is already finalized")
+			return nil
+		}
+		// Only return error for other types of rollback failures
+		contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Failed to rollback transaction: %v", rollbackErr)
+		return xerrors.NewError(fmt.Errorf("failed to rollback transaction: %w", rollbackErr), 0, "", true)
+	}
+	return nil
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"gemini-grc/config"
-	"gemini-grc/logging"
+	"git.antanst.com/antanst/logging"
 	"git.antanst.com/antanst/xerrors"
 )
 

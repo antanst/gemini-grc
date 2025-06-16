@@ -19,8 +19,8 @@ import (
 	"gemini-grc/gemini"
 	"gemini-grc/gopher"
 	"gemini-grc/hostPool"
-	"gemini-grc/logging"
 	"gemini-grc/robotsMatch"
+	"git.antanst.com/antanst/logging"
 	"git.antanst.com/antanst/xerrors"
 	"github.com/guregu/null/v5"
 	"github.com/jmoiron/sqlx"
@@ -30,7 +30,7 @@ func RunWorkerWithTx(workerID int, job string) {
 	// Extract host from URL for the context.
 	parsedURL, err := url2.ParseURL(job, "", true)
 	if err != nil {
-		logging.LogInfo("Failed to parse job URL: %s Error: %s", job, err)
+		logging.LogInfo("Failed to parse URL: %s Error: %s", job, err)
 		return
 	}
 	host := parsedURL.Hostname
@@ -38,8 +38,9 @@ func RunWorkerWithTx(workerID int, job string) {
 	// Create a new worker context
 	baseCtx := context.Background()
 	ctx, cancel := contextutil.NewRequestContext(baseCtx, job, host, workerID)
-	defer cancel() // Ensure the context is cancelled when we're done
 	ctx = contextutil.ContextWithComponent(ctx, "worker")
+	defer cancel() // Ensure the context is cancelled when we're done
+	// contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "======================================\n\n")
 	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Starting worker for URL %s", job)
 
 	// Create a new db transaction
@@ -51,66 +52,53 @@ func RunWorkerWithTx(workerID int, job string) {
 
 	err = runWorker(ctx, tx, []string{job})
 	if err != nil {
-		// Handle context cancellation and timeout errors gracefully, instead of treating them as fatal
+		// Two cases to handle:
+		// - context cancellation/timeout errors (log and ignore)
+		// - fatal errors (log and send to chan)
+		// non-fatal errors should've been handled within
+		// the runWorker() function and not bubble up here.
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Worker timed out or canceled: %v", err)
-			rollbackErr := SafeRollback(ctx, tx)
+			rollbackErr := gemdb.SafeRollback(ctx, tx)
 			if rollbackErr != nil {
 				FatalErrorsChan <- rollbackErr
 				return
 			}
 			return
+		} else if xerrors.IsFatal(err) {
+			contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Worker failed: %v", err)
+			rollbackErr := gemdb.SafeRollback(ctx, tx)
+			if rollbackErr != nil {
+				FatalErrorsChan <- rollbackErr
+				return
+			}
+			FatalErrorsChan <- err
+			return
+
 		}
-		// For other errors, we treat them as fatal.
-		contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Worker failed: %v", err)
-		rollbackErr := SafeRollback(ctx, tx)
-		if rollbackErr != nil {
-			FatalErrorsChan <- rollbackErr
-		}
-		FatalErrorsChan <- err
-		return
+		panic(err) // We shouldn't reach this point!
 	}
 
-	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Committing transaction")
 	err = tx.Commit()
 	if err != nil && !errors.Is(err, sql.ErrTxDone) {
 		contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Failed to commit transaction: %v", err)
-		if rollbackErr := SafeRollback(ctx, tx); rollbackErr != nil {
+		if rollbackErr := gemdb.SafeRollback(ctx, tx); rollbackErr != nil {
 			FatalErrorsChan <- err
 			return
 		}
 	}
-	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Worker done!")
-}
-
-// SafeRollback attempts to roll back a transaction,
-// handling the case if the tx was already finalized.
-func SafeRollback(ctx context.Context, tx *sqlx.Tx) error {
-	rollbackErr := tx.Rollback()
-	if rollbackErr != nil {
-		// Check if it's the standard "transaction already finalized" error
-		if errors.Is(rollbackErr, sql.ErrTxDone) {
-			contextlog.LogWarnWithContext(ctx, logging.GetSlogger(), "Rollback failed because transaction is already finalized")
-			return nil
-		}
-		// Only panic for other types of rollback failures
-		contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Failed to rollback transaction: %v", rollbackErr)
-		return xerrors.NewError(fmt.Errorf("failed to rollback transaction: %w", rollbackErr), 0, "", true)
-	}
-	return nil
+	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Worker done.")
 }
 
 func runWorker(ctx context.Context, tx *sqlx.Tx, urls []string) error {
-	total := len(urls)
-	for i, u := range urls {
-		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Starting %d/%d %s", i+1, total, u)
-		urlCtx, cancelFunc := context.WithCancel(ctx)
-		err := WorkOnUrl(urlCtx, tx, u)
-		cancelFunc()
+	for _, u := range urls {
+		err := WorkOnUrl(ctx, tx, u)
 		if err != nil {
-			return err
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || xerrors.IsFatal(err) {
+				return err
+			}
+			contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Worker failed: %v", err)
 		}
-		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Done %d/%d.", i+1, total)
 	}
 	return nil
 }
@@ -119,47 +107,44 @@ func runWorker(ctx context.Context, tx *sqlx.Tx, urls []string) error {
 // unexpected errors are returned.
 // expected errors are stored within the snapshot.
 func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
-	// Create a context specifically for this URL with "url" component
-	urlCtx := contextutil.ContextWithComponent(ctx, "url")
-
-	contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Processing URL: %s", url)
+	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Worker visiting URL %s", url)
 
 	s, err := snapshot.SnapshotFromURL(url, true)
 	if err != nil {
-		contextlog.LogErrorWithContext(urlCtx, logging.GetSlogger(), "Failed to parse URL: %v", err)
+		contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Failed to parse URL: %v", err)
 		return err
+	}
+
+	// We always use the normalized URL
+	if url != s.URL.Full {
+		//err = gemdb.Database.CheckAndUpdateNormalizedURL(ctx, tx, url, s.URL.Full)
+		//if err != nil {
+		//	return err
+		//}
+		//contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Normalized URL: %s → %s", url, s.URL.Full)
+		url = s.URL.Full
 	}
 
 	isGemini := url2.IsGeminiUrl(s.URL.String())
 	isGopher := url2.IsGopherURL(s.URL.String())
 
 	if !isGemini && !isGopher {
-		return xerrors.NewError(fmt.Errorf("not a Gopher or Gemini URL: %s", s.URL.String()), 0, "", false)
+		return xerrors.NewSimpleError(fmt.Errorf("not a Gopher or Gemini URL: %s", s.URL.String()))
 	}
 
 	if isGopher && !config.CONFIG.GopherEnable {
-		contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Skipping gopher URL (disabled in config)")
-		return nil
-	}
-
-	if url != s.URL.Full {
-		err = gemdb.Database.NormalizeURL(ctx, tx, url, s.URL.Full)
-		if err != nil {
-			return err
-		}
-		contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Normalized URL: %s → %s", url, s.URL.Full)
-		url = s.URL.Full
+		return xerrors.NewSimpleError(fmt.Errorf("gopher disabled, not processing Gopher URL: %s", s.URL.String()))
 	}
 
 	// Check if URL is whitelisted
 	isUrlWhitelisted := whiteList.IsWhitelisted(s.URL.String())
 	if isUrlWhitelisted {
-		contextlog.LogInfoWithContext(urlCtx, logging.GetSlogger(), "URL matches whitelist, forcing crawl %s", url)
+		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "URL matches whitelist, forcing crawl %s", url)
 	}
 
 	// Only check blacklist if URL is not whitelisted
 	if !isUrlWhitelisted && blackList.IsBlacklisted(s.URL.String()) {
-		contextlog.LogInfoWithContext(urlCtx, logging.GetSlogger(), "URL matches blacklist, ignoring %s", url)
+		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "URL matches blacklist, ignoring %s", url)
 		s.Error = null.StringFrom(commonErrors.ErrBlacklistMatch.Error())
 		return saveSnapshotAndRemoveURL(ctx, tx, s)
 	}
@@ -169,58 +154,44 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 	if !isUrlWhitelisted && isGemini {
 		// If URL matches a robots.txt disallow line,
 		// add it as an error and remove url
-		robotMatch, err = robotsMatch.RobotMatch(urlCtx, s.URL.String())
-		if err != nil {
-			if commonErrors.IsHostError(err) {
-				return removeURL(ctx, tx, s.URL.String())
-			}
-			return err
-		}
+		robotMatch = robotsMatch.RobotMatch(ctx, s.URL.String())
 		if robotMatch {
-			contextlog.LogInfoWithContext(urlCtx, logging.GetSlogger(), "URL matches robots.txt, skipping")
+			contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "URL matches robots.txt, skipping")
 			s.Error = null.StringFrom(commonErrors.ErrRobotsMatch.Error())
 			return saveSnapshotAndRemoveURL(ctx, tx, s)
 		}
 	}
 
-	contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Adding to host pool")
-	err = hostPool.AddHostToHostPool(urlCtx, s.Host)
+	err = hostPool.AddHostToHostPool(ctx, s.Host)
 	if err != nil {
-		contextlog.LogErrorWithContext(urlCtx, logging.GetSlogger(), "Failed to add host to pool: %v", err)
 		return err
 	}
 
 	defer func(ctx context.Context, host string) {
 		hostPool.RemoveHostFromPool(ctx, host)
-	}(urlCtx, s.Host)
+	}(ctx, s.Host)
 
-	contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Visiting %s", s.URL.String())
+	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Visiting %s", s.URL.String())
 
 	// Use context-aware visits for both protocols
 	if isGopher {
-		// Use the context-aware version for Gopher visits
-		s, err = gopher.VisitWithContext(urlCtx, s.URL.String())
+		s, err = gopher.VisitWithContext(ctx, s.URL.String())
 	} else {
-		// Use the context-aware version for Gemini visits
-		s, err = gemini.Visit(urlCtx, s.URL.String())
+		s, err = gemini.Visit(ctx, s.URL.String())
 	}
 
 	if err != nil {
-		contextlog.LogErrorWithContext(urlCtx, logging.GetSlogger(), "Error visiting URL: %v", err)
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Error visiting URL: %v", err)
 		return err
-	}
-	if s == nil {
-		contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "No snapshot returned")
-		return nil
 	}
 
 	// Handle Gemini redirection.
 	if isGemini &&
 		s.ResponseCode.ValueOrZero() >= 30 &&
 		s.ResponseCode.ValueOrZero() < 40 {
-		err = handleRedirection(urlCtx, tx, s)
+		err = saveRedirectURL(ctx, tx, s)
 		if err != nil {
-			return fmt.Errorf("error while handling redirection: %s", err)
+			return xerrors.NewSimpleError(fmt.Errorf("error while handling redirection: %s", err))
 		}
 	}
 
@@ -231,14 +202,14 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 			return err
 		}
 		if identical {
-			contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Content identical to existing snapshot, skipping")
+			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, skipping")
 			return removeURL(ctx, tx, s.URL.String())
 		}
 	}
 
 	// Process and store links since content has changed
 	if len(s.Links.ValueOrZero()) > 0 {
-		contextlog.LogDebugWithContext(urlCtx, logging.GetSlogger(), "Found %d links", len(s.Links.ValueOrZero()))
+		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Found %d links", len(s.Links.ValueOrZero()))
 		err = storeLinks(ctx, tx, s)
 		if err != nil {
 			return err
@@ -246,7 +217,11 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 	}
 
 	// Save the snapshot and remove the URL from the queue
-	contextlog.LogInfoWithContext(urlCtx, logging.GetSlogger(), "%2d %s", s.ResponseCode.ValueOrZero(), s.URL.String())
+	if s.Error.ValueOrZero() != "" {
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
+	} else {
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
+	}
 	return saveSnapshotAndRemoveURL(ctx, tx, s)
 }
 
@@ -273,12 +248,10 @@ func storeLinks(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error {
 	return nil
 }
 
-// Context-aware version of removeURL
 func removeURL(ctx context.Context, tx *sqlx.Tx, url string) error {
 	return gemdb.Database.DeleteURL(ctx, tx, url)
 }
 
-// Context-aware version of saveSnapshotAndRemoveURL
 func saveSnapshotAndRemoveURL(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error {
 	err := gemdb.Database.SaveSnapshot(ctx, tx, s)
 	if err != nil {
@@ -304,7 +277,7 @@ func haveWeVisitedURL(ctx context.Context, tx *sqlx.Tx, u string) (bool, error) 
 
 	// Check if the context is cancelled
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return false, xerrors.NewSimpleError(err)
 	}
 
 	// Check the urls table which holds the crawl queue.
@@ -337,7 +310,6 @@ func haveWeVisitedURL(ctx context.Context, tx *sqlx.Tx, u string) (bool, error) 
 		}
 
 		if len(recentSnapshots) > 0 {
-			contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Skipping URL %s (updated within last %d days)", u, config.CONFIG.SkipIfUpdatedDays)
 			return true, nil
 		}
 	}
@@ -345,30 +317,25 @@ func haveWeVisitedURL(ctx context.Context, tx *sqlx.Tx, u string) (bool, error) 
 	return false, nil
 }
 
-func handleRedirection(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error {
-	// Create a context specifically for redirection handling
-	redirectCtx := contextutil.ContextWithComponent(ctx, "redirect")
-
-	// Use the redirectCtx for all operations
+func saveRedirectURL(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error {
 	newURL, err := url2.ExtractRedirectTargetFromHeader(s.URL, s.Header.ValueOrZero())
 	if err != nil {
-		contextlog.LogErrorWithContext(redirectCtx, logging.GetSlogger(), "Failed to extract redirect target: %v", err)
+		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Failed to extract redirect target: %v", err)
 		return err
 	}
-	contextlog.LogDebugWithContext(redirectCtx, logging.GetSlogger(), "Page redirects to %s", newURL)
+	contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Page redirects to %s", newURL)
 
-	haveWeVisited, err := haveWeVisitedURL(redirectCtx, tx, newURL.String())
+	haveWeVisited, err := haveWeVisitedURL(ctx, tx, newURL.String())
 	if err != nil {
 		return err
 	}
 
 	if shouldPersistURL(newURL) && !haveWeVisited {
-		err = gemdb.Database.InsertURL(redirectCtx, tx, newURL.Full)
+		err = gemdb.Database.InsertURL(ctx, tx, newURL.Full)
 		if err != nil {
-			contextlog.LogErrorWithContext(redirectCtx, logging.GetSlogger(), "Failed to insert redirect URL: %v", err)
 			return err
 		}
-		contextlog.LogDebugWithContext(redirectCtx, logging.GetSlogger(), "Saved redirection URL %s", newURL.String())
+		contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "Saved redirection URL %s", newURL.String())
 	}
 	return nil
 }

@@ -1,0 +1,22 @@
+# Test redirect full url:
+gemini://gemini.circumlunar.space 
+
+# Test blacklist:
+gemi.dev
+
+# Test robots disallow:
+gemini://tlgs.one/search?aa
+
+# Test TLS cert required:
+gemini://astrobotany.mozz.us/app/plant
+// 31 redirect
+gemini://gemini.circumlunar.space
+
+// body with null byte
+gemini://kennedy.gemi.dev/archive/cached?url=gemini://spam.works/mirrors/textfiles/fun/consult.how&t=638427244900000000&raw=False
+
+// has invalid url
+gemini://tlgs.one/known-hosts
+
+// Needs SNI TLS info (our bug)
+gemini://hanzbrix.pollux.casa/gemlog/20241002.gmi

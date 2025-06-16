@@ -27,7 +27,7 @@ type Snapshot struct {
 func SnapshotFromURL(u string, normalize bool) (*Snapshot, error) {
 	url, err := commonUrl.ParseURL(u, "", normalize)
 	if err != nil {
-		return nil, xerrors.NewError(err, 0, "", false)
+		return nil, xerrors.NewSimpleError(err)
 	}
 	newSnapshot := Snapshot{
 		URL:       *url,

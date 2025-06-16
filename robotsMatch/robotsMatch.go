@@ -10,9 +10,10 @@ import (
 	"gemini-grc/common/contextlog"
 	"gemini-grc/common/snapshot"
 	geminiUrl "gemini-grc/common/url"
+	"gemini-grc/config"
 	"gemini-grc/contextutil"
 	"gemini-grc/gemini"
-	"gemini-grc/logging"
+	"git.antanst.com/antanst/logging"
 )
 
 // RobotsCache is a map of blocked URLs
@@ -38,7 +39,7 @@ func populateRobotsCache(ctx context.Context, key string) (entries []string, _er
 	contextlog.LogDebugWithContext(cacheCtx, logging.GetSlogger(), "Fetching robots.txt from %s", url)
 
 	// Use the context-aware version to honor timeout and cancellation
-	robotsContent, err := gemini.ConnectAndGetDataWithContext(cacheCtx, url)
+	robotsContent, err := gemini.ConnectAndGetData(cacheCtx, url)
 	if err != nil {
 		// Check for context timeout or cancellation specifically
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -59,12 +60,7 @@ func populateRobotsCache(ctx context.Context, key string) (entries []string, _er
 		return []string{}, nil
 	}
 
-	// TODO: Update gemini.ProcessData to accept context
-	s, err = gemini.ProcessData(*s, robotsContent)
-	if err != nil {
-		contextlog.LogDebugWithContext(cacheCtx, logging.GetSlogger(), "robots.txt error: %s", err)
-		return []string{}, nil
-	}
+	s = gemini.UpdateSnapshotWithData(*s, robotsContent)
 
 	if s.ResponseCode.ValueOrZero() != 20 {
 		contextlog.LogDebugWithContext(cacheCtx, logging.GetSlogger(), "robots.txt error code %d, ignoring", s.ResponseCode.ValueOrZero())
@@ -91,14 +87,18 @@ func populateRobotsCache(ctx context.Context, key string) (entries []string, _er
 
 // RobotMatch checks if the snapshot URL matches
 // a robots.txt allow rule.
-func RobotMatch(ctx context.Context, u string) (bool, error) {
+func RobotMatch(ctx context.Context, u string) bool {
 	// Create a context for robots operations
 	robotsCtx := contextutil.ContextWithComponent(ctx, "robotsMatch")
 
+	// TODO Missing Gopher functionality
+	if config.CONFIG.GopherEnable {
+		return false
+	}
+
 	url, err := geminiUrl.ParseURL(u, "", true)
 	if err != nil {
-		contextlog.LogErrorWithContext(robotsCtx, logging.GetSlogger(), "Failed to parse URL: %v", err)
-		return false, err
+		return false
 	}
 
 	key := strings.ToLower(fmt.Sprintf("%s:%d", url.Hostname, url.Port))
@@ -112,16 +112,7 @@ func RobotMatch(ctx context.Context, u string) (bool, error) {
 		var fetchErr error
 		disallowedURLs, fetchErr = populateRobotsCache(ctx, key)
 		if fetchErr != nil {
-			contextlog.LogDebugWithContext(robotsCtx, logging.GetSlogger(), "Error populating robots.txt cache for %s: %v", key, fetchErr)
-
-			// Handle context timeouts by propagating the error
-			if errors.Is(fetchErr, context.DeadlineExceeded) || errors.Is(fetchErr, context.Canceled) {
-				contextlog.LogDebugWithContext(robotsCtx, logging.GetSlogger(), "Timeout or cancellation while checking robots.txt")
-				return false, fetchErr
-			}
-
-			// For other errors, assume we can proceed without robots.txt
-			return false, nil
+			return false
 		}
 		if len(disallowedURLs) > 0 {
 			contextlog.LogDebugWithContext(robotsCtx, logging.GetSlogger(), "Added to robots.txt cache: %v => %v", key, disallowedURLs)
@@ -137,7 +128,7 @@ func RobotMatch(ctx context.Context, u string) (bool, error) {
 		}
 		contextlog.LogDebugWithContext(robotsCtx, logging.GetSlogger(), "Found %d disallowed paths in robots.txt cache for %s", len(disallowedURLs), key)
 	}
-	return isURLblocked(ctx, disallowedURLs, url.Full), nil
+	return isURLblocked(ctx, disallowedURLs, url.Full)
 }
 
 // Initialize initializes the robots.txt match package
@@ -157,12 +148,9 @@ func isURLblocked(ctx context.Context, disallowedURLs []string, input string) bo
 	blockCtx := contextutil.ContextWithComponent(ctx, "robotsMatch.isURLblocked")
 
 	inputLower := strings.ToLower(input)
-	contextlog.LogDebugWithContext(blockCtx, logging.GetSlogger(), "Checking URL against robots.txt rules: %s", input)
 
 	for _, url := range disallowedURLs {
 		urlLower := strings.ToLower(url)
-		contextlog.LogDebugWithContext(blockCtx, logging.GetSlogger(), "Comparing against rule: %s (lower: %s vs %s)", url, inputLower, urlLower)
-
 		if strings.HasPrefix(inputLower, urlLower) {
 			contextlog.LogDebugWithContext(blockCtx, logging.GetSlogger(), "MATCH! robots.txt rule: %s blocks URL: %s", url, input)
 			return true
