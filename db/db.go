@@ -41,6 +41,7 @@ type DbService interface {
 	// Snapshot methods
 	SaveSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error
 	OverwriteSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error
+	RecordCrawlAttempt(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error
 	GetLatestSnapshot(ctx context.Context, tx *sqlx.Tx, url string) (*snapshot.Snapshot, error)
 	GetSnapshotAtTimestamp(ctx context.Context, tx *sqlx.Tx, url string, timestamp time.Time) (*snapshot.Snapshot, error)
 	GetAllSnapshotsForURL(ctx context.Context, tx *sqlx.Tx, url string) ([]*snapshot.Snapshot, error)
@@ -387,6 +388,7 @@ func (d *DbServiceImpl) SaveSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapsh
 
 	// Always ensure we have a current timestamp
 	s.Timestamp = null.TimeFrom(time.Now())
+	// last_crawled will be set automatically by database DEFAULT
 
 	// For PostgreSQL, use the global sqlx.NamedQueryContext function
 	// The SQL_INSERT_SNAPSHOT already has a RETURNING id clause
@@ -419,6 +421,31 @@ func (d *DbServiceImpl) OverwriteSnapshot(ctx context.Context, tx *sqlx.Tx, s *s
 
 	// Now simply delegate to SaveSnapshot which is already context-aware
 	return d.SaveSnapshot(ctx, tx, s)
+}
+
+// RecordCrawlAttempt records a crawl attempt without saving full content (when content is identical)
+func (d *DbServiceImpl) RecordCrawlAttempt(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error {
+	dbCtx := contextutil.ContextWithComponent(ctx, "database")
+	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Recording crawl attempt for URL %s", s.URL.String())
+
+	// Check if the context is cancelled before proceeding
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// Record the crawl attempt with minimal data
+	// timestamp and last_crawled will be set automatically by database DEFAULT
+	_, err := tx.ExecContext(ctx, SQL_RECORD_CRAWL_ATTEMPT,
+		s.URL.String(),
+		s.Host,
+		s.MimeType.String,
+		s.ResponseCode.ValueOrZero(),
+		s.Error.String)
+	if err != nil {
+		return xerrors.NewError(fmt.Errorf("cannot record crawl attempt for URL %s: %w", s.URL.String(), err), 0, "", true)
+	}
+
+	return nil
 }
 
 // GetLatestSnapshot gets the latest snapshot with context

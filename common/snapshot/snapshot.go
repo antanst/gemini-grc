@@ -20,8 +20,9 @@ type Snapshot struct {
 	Header       null.String                   `db:"header" json:"header,omitempty"`   // Response header.
 	Links        null.Value[linkList.LinkList] `db:"links" json:"links,omitempty"`
 	Lang         null.String                   `db:"lang" json:"lang,omitempty"`
-	ResponseCode null.Int                      `db:"response_code" json:"code,omitempty"` // Gemini response Status code.
-	Error        null.String                   `db:"error" json:"error,omitempty"`        // On network errors only
+	ResponseCode null.Int                      `db:"response_code" json:"code,omitempty"`        // Gemini response Status code.
+	Error        null.String                   `db:"error" json:"error,omitempty"`               // On network errors only
+	LastCrawled  null.Time                     `db:"last_crawled" json:"last_crawled,omitempty"` // When URL was last processed (regardless of content changes)
 }
 
 func SnapshotFromURL(u string, normalize bool) (*Snapshot, error) {

@@ -202,7 +202,12 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 		return err
 	}
 	if skipIdentical {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, skipping")
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, recording crawl attempt")
+		// Record the crawl attempt to track that we processed this URL
+		err = gemdb.Database.RecordCrawlAttempt(ctx, tx, s)
+		if err != nil {
+			return err
+		}
 		return removeURL(ctx, tx, s.URL.String())
 	}
 

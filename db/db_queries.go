@@ -94,7 +94,8 @@ links = :links,
 lang = :lang,
 response_code = :response_code,
 error = :error,
-header = :header
+header = :header,
+last_crawled = CURRENT_TIMESTAMP
 WHERE id = :id
 RETURNING id
 `
@@ -138,5 +139,10 @@ RETURNING id
         WHERE url = $1
         AND timestamp BETWEEN $2 AND $3
         ORDER BY timestamp DESC
+    `
+	// New query to record crawl attempt when content is identical (no new snapshot needed)
+	SQL_RECORD_CRAWL_ATTEMPT = `
+        INSERT INTO snapshots (url, host, mimetype, response_code, error)
+        VALUES ($1, $2, $3, $4, $5)
     `
 )
