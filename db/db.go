@@ -448,7 +448,7 @@ func (d *DbServiceImpl) GetLatestSnapshot(ctx context.Context, tx *sqlx.Tx, url 
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, xerrors.NewError(fmt.Errorf("cannot get latest snapshot for URL %s: %w", url, err), 0, "", false)
+		return nil, xerrors.NewError(fmt.Errorf("cannot get latest snapshot for URL %s: %w", url, err), 0, "", true)
 	}
 	return s, nil
 }

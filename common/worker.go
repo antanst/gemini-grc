@@ -236,6 +236,10 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 			return saveSnapshotAndRemoveURL(ctx, tx, s)
 		} else {
 			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s (but old content exists, not updating)", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
+			err = gemdb.Database.UpdateLastCrawled(ctx, tx, s.URL.String())
+			if err != nil {
+				return err
+			}
 			return removeURL(ctx, tx, s.URL.String())
 		}
 	} else {
