@@ -41,7 +41,7 @@ type DbService interface {
 	// Snapshot methods
 	SaveSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error
 	OverwriteSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error
-	RecordCrawlAttempt(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error
+	UpdateLastCrawled(ctx context.Context, tx *sqlx.Tx, url string) error
 	GetLatestSnapshot(ctx context.Context, tx *sqlx.Tx, url string) (*snapshot.Snapshot, error)
 	GetSnapshotAtTimestamp(ctx context.Context, tx *sqlx.Tx, url string, timestamp time.Time) (*snapshot.Snapshot, error)
 	GetAllSnapshotsForURL(ctx context.Context, tx *sqlx.Tx, url string) ([]*snapshot.Snapshot, error)
@@ -374,21 +374,10 @@ func (d *DbServiceImpl) SaveSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapsh
 		return err
 	}
 
-	// Check if we should skip storing identical content
-	if config.CONFIG.SkipIdenticalContent {
-		// Use the context-aware version to check for identical content
-		identical, err := d.IsContentIdentical(ctx, tx, s)
-		if err != nil {
-			return err
-		} else if identical {
-			contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Skipping URL with identical content to existing snapshot: %s", s.URL.String())
-			return nil
-		}
-	}
-
-	// Always ensure we have a current timestamp
-	s.Timestamp = null.TimeFrom(time.Now())
-	// last_crawled will be set automatically by database DEFAULT
+	// Always ensure we have current timestamps
+	currentTime := time.Now()
+	s.Timestamp = null.TimeFrom(currentTime)
+	s.LastCrawled = null.TimeFrom(currentTime)
 
 	// For PostgreSQL, use the global sqlx.NamedQueryContext function
 	// The SQL_INSERT_SNAPSHOT already has a RETURNING id clause
@@ -423,26 +412,20 @@ func (d *DbServiceImpl) OverwriteSnapshot(ctx context.Context, tx *sqlx.Tx, s *s
 	return d.SaveSnapshot(ctx, tx, s)
 }
 
-// RecordCrawlAttempt records a crawl attempt without saving full content (when content is identical)
-func (d *DbServiceImpl) RecordCrawlAttempt(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) error {
+// UpdateLastCrawled updates the last_crawled timestamp for the most recent snapshot of a URL
+func (d *DbServiceImpl) UpdateLastCrawled(ctx context.Context, tx *sqlx.Tx, url string) error {
 	dbCtx := contextutil.ContextWithComponent(ctx, "database")
-	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Recording crawl attempt for URL %s", s.URL.String())
+	contextlog.LogDebugWithContext(dbCtx, logging.GetSlogger(), "Updating last_crawled timestamp for URL %s", url)
 
 	// Check if the context is cancelled before proceeding
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	// Record the crawl attempt with minimal data
-	// timestamp and last_crawled will be set automatically by database DEFAULT
-	_, err := tx.ExecContext(ctx, SQL_RECORD_CRAWL_ATTEMPT,
-		s.URL.String(),
-		s.Host,
-		s.MimeType.String,
-		s.ResponseCode.ValueOrZero(),
-		s.Error.String)
+	// Update the last_crawled timestamp for the most recent snapshot
+	_, err := tx.ExecContext(ctx, SQL_UPDATE_LAST_CRAWLED, url)
 	if err != nil {
-		return xerrors.NewError(fmt.Errorf("cannot record crawl attempt for URL %s: %w", s.URL.String(), err), 0, "", true)
+		return xerrors.NewError(fmt.Errorf("cannot update last_crawled for URL %s: %w", url, err), 0, "", true)
 	}
 
 	return nil
@@ -540,14 +523,6 @@ func (d *DbServiceImpl) IsContentIdentical(ctx context.Context, tx *sqlx.Tx, s *
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-
-	// Update: Skipped this because empty pages can be valid
-	// ex. pages with redirect headers
-	// Only check for identical content if we have gemtext or data
-	//if (!s.GemText.Valid || s.GemText.String == "") &&
-	//	(!s.Data.Valid || len(s.Data.V) == 0) {
-	//	return false, nil
-	//}
 
 	// Try to get the latest snapshot for this URL
 	latestSnapshot := &snapshot.Snapshot{}

@@ -26,7 +26,8 @@ CREATE TABLE snapshots (
     lang TEXT,
     response_code INTEGER,
     error TEXT,
-    header TEXT
+    header TEXT,
+    last_crawled TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX idx_url_timestamp ON snapshots (url, timestamp);
@@ -41,3 +42,5 @@ CREATE INDEX idx_response_code_error ON snapshots (response_code, error);
 CREATE INDEX idx_response_code_error_nulls ON snapshots (response_code, error) WHERE response_code IS NULL AND error IS NULL;
 CREATE INDEX idx_snapshots_unprocessed ON snapshots (host) WHERE response_code IS NULL AND error IS NULL;
 CREATE INDEX idx_url_latest ON snapshots (url, timestamp DESC);
+CREATE INDEX idx_last_crawled ON snapshots (last_crawled);
+CREATE INDEX idx_url_last_crawled ON snapshots (url, last_crawled DESC);

@@ -196,15 +196,15 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 	}
 
 	// Check if we should skip a potentially
-	// identical snapshot
-	skipIdentical, err := shouldSkipIdenticalSnapshot(ctx, tx, s)
+	// identical snapshot with one from history
+	isIdentical, err := isContentIdentical(ctx, tx, s)
 	if err != nil {
 		return err
 	}
-	if skipIdentical {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, recording crawl attempt")
-		// Record the crawl attempt to track that we processed this URL
-		err = gemdb.Database.RecordCrawlAttempt(ctx, tx, s)
+	if isIdentical {
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Content identical to existing snapshot, updating crawl timestamp")
+		// Update the last_crawled timestamp to track that we processed this URL
+		err = gemdb.Database.UpdateLastCrawled(ctx, tx, s.URL.String())
 		if err != nil {
 			return err
 		}
@@ -222,37 +222,46 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 
 	// Save the snapshot and remove the URL from the queue
 	if s.Error.ValueOrZero() != "" {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
+		// Only save error if we didn't have any valid
+		// snapshot data from a previous crawl!
+		shouldUpdateSnapshot, err := shouldUpdateSnapshotData(ctx, tx, s)
+		if err != nil {
+			return err
+		}
+		if shouldUpdateSnapshot {
+			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
+			return saveSnapshotAndRemoveURL(ctx, tx, s)
+		} else {
+			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s (but old content exists, not updating)", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
+			return removeURL(ctx, tx, s.URL.String())
+		}
 	} else {
 		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
+		return saveSnapshotAndRemoveURL(ctx, tx, s)
 	}
-	return saveSnapshotAndRemoveURL(ctx, tx, s)
 }
 
-func shouldSkipIdenticalSnapshot(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) (bool, error) {
-	// Check if content is identical to previous snapshot and we should skip further processing
-	if config.CONFIG.SkipIdenticalContent {
-		identical, err := gemdb.Database.IsContentIdentical(ctx, tx, s)
-		if err != nil {
-			return false, err
-		}
-		if identical {
-			return true, nil
-		}
+func shouldUpdateSnapshotData(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) (bool, error) {
+	prevSnapshot, err := gemdb.Database.GetLatestSnapshot(ctx, tx, s.URL.String())
+	if err != nil {
+		return false, err
 	}
-	// We write every Gemini capsule, but still
-	// skip identical pages that aren't capsules.
-	if s.MimeType.String != "text/gemini" {
-		identical, err := gemdb.Database.IsContentIdentical(ctx, tx, s)
-		if err != nil {
-			return false, err
-		}
-		if identical {
-			return true, nil
-		}
+	if prevSnapshot == nil {
+		return true, nil
+	}
+	if prevSnapshot.ResponseCode.Valid {
+		return false, nil
+	}
+	return true, nil
+}
 
+func isContentIdentical(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snapshot) (bool, error) {
+	// Always check if content is identical to previous snapshot
+	identical, err := gemdb.Database.IsContentIdentical(ctx, tx, s)
+	if err != nil {
+		return false, err
 	}
-	return false, nil
+	return identical, nil
 }
 
 // storeLinks checks and stores the snapshot links in the database.

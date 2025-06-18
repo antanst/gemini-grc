@@ -307,139 +307,17 @@ func enqueueSeedURLs(ctx context.Context, tx *sqlx.Tx) error {
 	return nil
 }
 
-//func fetchSnapshotsFromHistory(ctx context.Context, tx *sqlx.Tx, num int, age int) (int, error) {
-//	// Select <num> snapshots from snapshots table for recrawling
-//	// They should be at least <age> days old, random order,
-//	// one snapshot per host if possible.
-//	historyCtx := contextutil.ContextWithComponent(context.Background(), "fetchSnapshotsFromHistory")
-//	contextlog.LogDebugWithContext(historyCtx, logging.GetSlogger(), "Looking for %d snapshots at least %d days old to recrawl", num, age)
-//
-//	// Calculate the cutoff date
-//	cutoffDate := time.Now().AddDate(0, 0, -age)
-//
-//	// SQL to select one random URL per host from snapshots older than the cutoff date
-//	// TODO implement when gopher enabled
-//	query := `
-//		WITH hosts AS (
-//			SELECT DISTINCT host
-//			FROM snapshots
-//			WHERE url ~ '^gemini://[^/]+/?$'
-//		        AND gemtext IS NOT NULL
-//			AND timestamp < $1
-//			AND error IS NULL
-//		),
-//		ranked_snapshots AS (
-//			SELECT
-//				s.url,
-//				s.host,
-//				s.timestamp,
-//				ROW_NUMBER() OVER (PARTITION BY s.host ORDER BY RANDOM()) as rank
-//			FROM snapshots s
-//			JOIN hosts h ON s.host = h.host
-//			WHERE s.timestamp < $1
-//		)
-//		SELECT url, host
-//		FROM ranked_snapshots
-//		WHERE rank = 1
-//		ORDER BY RANDOM()
-//		LIMIT $2
-//	`
-//
-//	type SnapshotURL struct {
-//		URL  string `db:"url"`
-//		Host string `db:"host"`
-//	}
-//
-//	// Execute the query
-//	var snapshotURLs []SnapshotURL
-//	err := tx.Select(&snapshotURLs, query, cutoffDate, num)
-//	if err != nil {
-//		return 0, err
-//	}
-//
-//	if len(snapshotURLs) == 0 {
-//		historyCtx := contextutil.ContextWithComponent(context.Background(), "fetchSnapshotsFromHistory")
-//		contextlog.LogInfoWithContext(historyCtx, logging.GetSlogger(), "No old snapshots found to recrawl")
-//		return 0, nil
-//	}
-//
-//	// For each selected snapshot, add the URL to the urls table
-//	insertCount := 0
-//	for _, snapshot := range snapshotURLs {
-//		err := gemdb.Database.InsertURL(ctx, tx, snapshot.URL)
-//		if err != nil {
-//			logging.LogError("Error inserting URL %s from old snapshot to queue: %v", snapshot.URL, err)
-//			return 0, err
-//		}
-//		insertCount++
-//	}
-//
-//	// Note: The transaction is committed by the caller (runJobScheduler),
-//	// not here. This function is called as part of a larger transaction.
-//	if insertCount > 0 {
-//		historyCtx := contextutil.ContextWithComponent(context.Background(), "fetchSnapshotsFromHistory")
-//		contextlog.LogInfoWithContext(historyCtx, logging.GetSlogger(), "Added %d old URLs to recrawl queue", insertCount)
-//	}
-//
-//	return insertCount, nil
-//}
-
 func fetchSnapshotsFromHistory(ctx context.Context, tx *sqlx.Tx, num int, age int) (int, error) {
 	// Select <num> snapshots from snapshots table for recrawling
 	// Find URLs where the LATEST crawl attempt (via last_crawled) is at least <age> days old
-	// Now works correctly with SkipIdenticalContent=true - fixes infinite recrawl loop
+	// Uses last_crawled timestamp to track actual crawl attempts regardless of content changes
 	historyCtx := contextutil.ContextWithComponent(context.Background(), "fetchSnapshotsFromHistory")
 	contextlog.LogDebugWithContext(historyCtx, logging.GetSlogger(), "Looking for %d URLs whose latest crawl attempt is at least %d days old to recrawl", num, age)
 
 	// Calculate the cutoff date
 	cutoffDate := time.Now().AddDate(0, 0, -age)
 
-	// SQL to select URLs where the latest crawl attempt is older than the cutoff date
-	// Now uses last_crawled timestamp to track actual crawl attempts
-	// Works correctly with SkipIdenticalContent setting - avoids infinite recrawl loop
-	// One URL per host for diversity, focusing on root domain URLs
-	query := `
-		WITH latest_attempts AS (
-			SELECT 
-				url,
-				host,
-				COALESCE(MAX(last_crawled), '1970-01-01'::timestamp) as latest_attempt
-			FROM snapshots
-			WHERE url ~ '^gemini://[^/]+/?$'
-			GROUP BY url, host
-		),
-		root_urls_with_content AS (
-			SELECT DISTINCT
-				la.url,
-				la.host,
-				la.latest_attempt
-			FROM latest_attempts la
-			JOIN snapshots s ON s.url = la.url 
-			WHERE (s.gemtext IS NOT NULL OR s.data IS NOT NULL)
-				AND s.response_code BETWEEN 20 AND 29
-		),
-		eligible_urls AS (
-			SELECT 
-				url,
-				host,
-				latest_attempt
-			FROM root_urls_with_content
-			WHERE latest_attempt < $1
-		),
-		ranked_urls AS (
-			SELECT
-				url,
-				host,
-				latest_attempt,
-				ROW_NUMBER() OVER (PARTITION BY host ORDER BY RANDOM()) as rank
-			FROM eligible_urls
-		)
-		SELECT url, host
-		FROM ranked_urls
-		WHERE rank = 1
-		ORDER BY RANDOM()
-		LIMIT $2
-	`
+	// Use the query from db_queries.go to find URLs that need re-crawling
 
 	type SnapshotURL struct {
 		URL  string `db:"url"`
@@ -448,7 +326,7 @@ func fetchSnapshotsFromHistory(ctx context.Context, tx *sqlx.Tx, num int, age in
 
 	// Execute the query
 	var snapshotURLs []SnapshotURL
-	err := tx.Select(&snapshotURLs, query, cutoffDate, num)
+	err := tx.Select(&snapshotURLs, gemdb.SQL_FETCH_SNAPSHOTS_FROM_HISTORY, cutoffDate, num)
 	if err != nil {
 		return 0, err
 	}

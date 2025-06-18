@@ -9,19 +9,18 @@ import (
 
 // Config holds the application configuration loaded from environment variables.
 type Config struct {
-	PgURL                string
-	LogLevel             slog.Level // Logging level (debug, info, warn, error)
-	MaxResponseSize      int        // Maximum size of response in bytes
-	MaxDbConnections     int        // Maximum number of database connections.
-	NumOfWorkers         int        // Number of concurrent workers
-	ResponseTimeout      int        // Timeout for responses in seconds
-	BlacklistPath        string     // File that has blacklisted strings of "host:port"
-	WhitelistPath        string     // File with URLs that should always be crawled regardless of blacklist
-	DryRun               bool       // If false, don't write to disk
-	GopherEnable         bool       // Enable Gopher crawling
-	SeedUrlPath          string     // Add URLs from file to queue
-	SkipIdenticalContent bool       // When true, skip storing snapshots with identical content
-	SkipIfUpdatedDays    int        // Skip re-crawling URLs updated within this many days (0 to disable, default 0)
+	PgURL             string
+	LogLevel          slog.Level // Logging level (debug, info, warn, error)
+	MaxResponseSize   int        // Maximum size of response in bytes
+	MaxDbConnections  int        // Maximum number of database connections.
+	NumOfWorkers      int        // Number of concurrent workers
+	ResponseTimeout   int        // Timeout for responses in seconds
+	BlacklistPath     string     // File that has blacklisted strings of "host:port"
+	WhitelistPath     string     // File with URLs that should always be crawled regardless of blacklist
+	DryRun            bool       // If false, don't write to disk
+	GopherEnable      bool       // Enable Gopher crawling
+	SeedUrlPath       string     // Add URLs from file to queue
+	SkipIfUpdatedDays int        // Skip re-crawling URLs updated within this many days (0 to disable)
 }
 
 var CONFIG Config //nolint:gochecknoglobals
@@ -39,7 +38,6 @@ func Initialize() *Config {
 	maxResponseSize := flag.Int("max-response-size", 1024*1024, "Maximum size of response in bytes")
 	responseTimeout := flag.Int("response-timeout", 10, "Timeout for network responses in seconds")
 	blacklistPath := flag.String("blacklist-path", "", "File that has blacklist regexes")
-	skipIdenticalContent := flag.Bool("skip-identical-content", true, "Skip storing snapshots with identical content")
 	skipIfUpdatedDays := flag.Int("skip-if-updated-days", 60, "Skip re-crawling URLs updated within this many days (0 to disable)")
 	whitelistPath := flag.String("whitelist-path", "", "File with URLs that should always be crawled regardless of blacklist")
 	seedUrlPath := flag.String("seed-url-path", "", "File with seed URLs that should be added to the queue immediatelly")
@@ -56,7 +54,6 @@ func Initialize() *Config {
 	config.WhitelistPath = *whitelistPath
 	config.SeedUrlPath = *seedUrlPath
 	config.MaxDbConnections = *maxDbConnections
-	config.SkipIdenticalContent = *skipIdenticalContent
 	config.SkipIfUpdatedDays = *skipIfUpdatedDays
 
 	level, err := ParseSlogLevel(*loglevel)
