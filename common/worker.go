@@ -76,7 +76,13 @@ func RunWorkerWithTx(workerID int, job string) {
 			return
 
 		}
-		panic(err) // We shouldn't reach this point!
+		contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Worker failed: %v", err)
+		rollbackErr := gemdb.SafeRollback(ctx, tx)
+		if rollbackErr != nil {
+			FatalErrorsChan <- rollbackErr
+			return
+		}
+		return
 	}
 
 	err = tx.Commit()
@@ -94,10 +100,7 @@ func runWorker(ctx context.Context, tx *sqlx.Tx, urls []string) error {
 	for _, u := range urls {
 		err := WorkOnUrl(ctx, tx, u)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || xerrors.IsFatal(err) {
-				return err
-			}
-			contextlog.LogErrorWithContext(ctx, logging.GetSlogger(), "Worker failed: %v", err)
+			return err
 		}
 	}
 	return nil
