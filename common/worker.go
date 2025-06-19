@@ -291,7 +291,7 @@ func saveSnapshotAndRemoveURL(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snap
 		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
 		return removeURL(ctx, tx, s.URL.String())
 	} else {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d (but old content exists, updating crawl date)", s.ResponseCode.ValueOrZero())
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d (but old snapshot exists, updating crawl date)", s.ResponseCode.ValueOrZero())
 		err = gemdb.Database.UpdateLastCrawled(ctx, tx, s.URL.String())
 		if err != nil {
 			return err
