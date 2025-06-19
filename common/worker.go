@@ -215,7 +215,6 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 		}
 	}
 
-	contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
 	return saveSnapshotAndRemoveURL(ctx, tx, s)
 }
 
@@ -285,14 +284,14 @@ func saveSnapshotAndRemoveURL(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snap
 		return err
 	}
 	if shouldUpdateSnapshot {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
 		err := gemdb.Database.SaveSnapshot(ctx, tx, s)
 		if err != nil {
 			return err
 		}
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
 		return removeURL(ctx, tx, s.URL.String())
 	} else {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s (but old content exists, updating crawl date)", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d (but old content exists, updating crawl date)", s.ResponseCode.ValueOrZero())
 		err = gemdb.Database.UpdateLastCrawled(ctx, tx, s.URL.String())
 		if err != nil {
 			return err
