@@ -115,12 +115,7 @@ LIMIT $1
 	SQL_UPDATE_LAST_CRAWLED = `
         UPDATE snapshots 
         SET last_crawled = CURRENT_TIMESTAMP 
-        WHERE id = (
-            SELECT id FROM snapshots 
-            WHERE url = $1 
-            ORDER BY timestamp DESC 
-            LIMIT 1
-        )
+        WHERE url = $1
     `
 	// SQL_FETCH_SNAPSHOTS_FROM_HISTORY Fetches URLs from snapshots for re-crawling based on last_crawled timestamp
 	// This query finds root domain URLs that haven't been crawled recently and selects
@@ -137,7 +132,7 @@ LIMIT $1
 				host,
 				COALESCE(MAX(last_crawled), '1970-01-01'::timestamp) as latest_attempt
 			FROM snapshots
-			WHERE url ~ '^gemini://[^/]+/?$' AND mimetype = 'text/gemini'
+			WHERE url ~ '^gemini://[^/]+/?$' AND mimetype = 'text/gemini' AND error IS NULL
 			GROUP BY url, host
 		),
 		root_urls_with_content AS (

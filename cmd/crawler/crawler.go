@@ -148,7 +148,7 @@ func spawnWorkers(total int) {
 		go func(a int) {
 			for {
 				job := <-jobs
-				common.RunWorkerWithTx(id, job)
+				common.RunWorkerWithTx(a, job)
 			}
 		}(id)
 	}
@@ -251,14 +251,14 @@ func runJobScheduler() {
 		// When out of pending URLs, add some random ones.
 		if len(distinctHosts) == 0 {
 			// Queue random old URLs from history.
-			count, err := fetchSnapshotsFromHistory(dbCtx, tx, config.CONFIG.NumOfWorkers*3, config.CONFIG.SkipIfUpdatedDays)
+			count, err := fetchSnapshotsFromHistory(dbCtx, tx, config.CONFIG.NumOfWorkers*10, config.CONFIG.SkipIfUpdatedDays)
 			if err != nil {
 				common.FatalErrorsChan <- err
 				return
 			}
 			if count == 0 {
-				contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "No work, waiting to poll DB...")
-				time.Sleep(30 * time.Second)
+				contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "No work, waiting to poll DB...")
+				time.Sleep(120 * time.Second)
 				continue
 			}
 			distinctHosts, err = gemdb.Database.GetUrlHosts(dbCtx, tx)
@@ -282,28 +282,39 @@ func runJobScheduler() {
 		}
 
 		if len(urls) == 0 {
-			contextlog.LogDebugWithContext(ctx, logging.GetSlogger(), "No work, waiting to poll DB...")
-			time.Sleep(30 * time.Second)
+			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "No work, waiting to poll DB...")
+			time.Sleep(120 * time.Second)
 			continue
 		}
 
 		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Queueing %d distinct hosts -> %d urls to crawl", len(distinctHosts), len(urls))
+
+		// Add jobs to WaitGroup before queuing
+		common.WorkerWG.Add(len(urls))
+
 		for _, url := range urls {
 			jobs <- url
 		}
+
+		// Wait for all workers to complete their jobs
+		common.WorkerWG.Wait()
+
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "All workers done. New scheduler run starts")
+		logging.LogInfo("")
+		logging.LogInfo("")
 	}
 }
 
 func enqueueSeedURLs(ctx context.Context, tx *sqlx.Tx) error {
 	// Get seed URLs from seedList module
-	urls := seedList.GetSeedURLs()
-
-	for _, url := range urls {
-		err := gemdb.Database.InsertURL(ctx, tx, url)
-		if err != nil {
-			return err
-		}
-	}
+	//urls := seedList.GetSeedURLs()
+	//
+	//for _, url := range urls {
+	//	err := gemdb.Database.InsertURL(ctx, tx, url)
+	//	if err != nil {
+	//		return err
+	//	}
+	//}
 	return nil
 }
 
@@ -332,7 +343,6 @@ func fetchSnapshotsFromHistory(ctx context.Context, tx *sqlx.Tx, num int, age in
 	}
 
 	if len(snapshotURLs) == 0 {
-		contextlog.LogInfoWithContext(historyCtx, logging.GetSlogger(), "No URLs with old latest crawl attempts found to recrawl")
 		return 0, nil
 	}
 

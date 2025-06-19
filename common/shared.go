@@ -1,6 +1,9 @@
 package common
 
-import "os"
+import (
+	"os"
+	"sync"
+)
 
 // FatalErrorsChan accepts errors from workers.
 // In case of fatal error, gracefully
@@ -8,6 +11,7 @@ import "os"
 var (
 	FatalErrorsChan chan error
 	SignalsChan     chan os.Signal
+	WorkerWG        sync.WaitGroup
 )
 
 const VERSION string = "0.0.1"
