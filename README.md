@@ -4,13 +4,13 @@ A crawler for the [Gemini](https://en.wikipedia.org/wiki/Gemini_(protocol)) netw
 Easily extendable as a "wayback machine" of Gemini.
 
 ## Features
-- [x] Save image/* and text/* files
 - [x] Concurrent downloading with configurable number of workers
+- [x] Save image/* and text/* files
 - [x] Connection limit per host
 - [x] URL Blacklist
 - [x] URL Whitelist (overrides blacklist and robots.txt)
 - [x] Follow robots.txt, see gemini://geminiprotocol.net/docs/companion/robots.gmi
-- [x] Configuration via environment variables
+- [x] Configuration via command-line flags
 - [x] Storing capsule snapshots in PostgreSQL
 - [x] Proper response header & body UTF-8 and format validation
 - [x] Proper URL normalization
@@ -22,46 +22,55 @@ This crawler uses `InsecureSkipVerify: true` in TLS configuration to accept all 
 
 ## How to run
 
-Spin up a PostgreSQL, check `db/sql/initdb.sql` to create the tables and start the crawler.
-All configuration is done via environment variables.
+Spin up a PostgreSQL, check `misc/sql/initdb.sql` to create the tables and start the crawler.
+All configuration is done via command-line flags.
 
 ## Configuration
 
-Bool can be `true`,`false` or `0`,`1`.
+Available command-line flags:
 
 ```text
-	LogLevel               string // Logging level (debug, info, warn, error)
-	MaxResponseSize        int // Maximum size of response in bytes
-	NumOfWorkers           int // Number of concurrent workers
-	ResponseTimeout        int // Timeout for responses in seconds
-	PanicOnUnexpectedError bool // Panic on unexpected errors when visiting a URL
-	BlacklistPath          string // File that has blacklisted strings of "host:port"
-	WhitelistPath          string // File with URLs that should always be crawled regardless of blacklist or robots.txt
-	DryRun                 bool // If false, don't write to disk
-	SkipIdenticalContent   bool // When true, skip storing snapshots with identical content
-	SkipIfUpdatedDays      int  // Skip re-crawling URLs updated within this many days (0 to disable)
+  -blacklist-path string
+        File that has blacklist regexes
+  -dry-run
+        Dry run mode
+  -gopher
+        Enable crawling of Gopher holes
+  -log-level string
+        Logging level (debug, info, warn, error) (default "info")
+  -max-db-connections int
+        Maximum number of database connections (default 100)
+  -max-response-size int
+        Maximum size of response in bytes (default 1048576)
+  -pgurl string
+        Postgres URL
+  -response-timeout int
+        Timeout for network responses in seconds (default 10)
+  -seed-url-path string
+        File with seed URLs that should be added to the queue immediately
+  -skip-if-updated-days int
+        Skip re-crawling URLs updated within this many days (0 to disable) (default 60)
+  -whitelist-path string
+        File with URLs that should always be crawled regardless of blacklist
+  -workers int
+        Number of concurrent workers (default 1)
 ```
 
 Example:
 
 ```shell
-LOG_LEVEL=info \
-NUM_OF_WORKERS=10 \
-BLACKLIST_PATH="./blacklist.txt" \ # one url per line, can be empty
-WHITELIST_PATH="./whitelist.txt" \ # URLs that override blacklist and robots.txt
-MAX_RESPONSE_SIZE=10485760 \
-RESPONSE_TIMEOUT=10 \
-PANIC_ON_UNEXPECTED_ERROR=true \
-PG_DATABASE=test \
-PG_HOST=127.0.0.1 \
-PG_MAX_OPEN_CONNECTIONS=100 \
-PG_PORT=5434 \
-PG_USER=test \
-PG_PASSWORD=test \
-DRY_RUN=false \
-SKIP_IDENTICAL_CONTENT=false \
-SKIP_IF_UPDATED_DAYS=7 \
-./gemini-grc
+./dist/crawler \
+  -pgurl="postgres://test:test@127.0.0.1:5434/test?sslmode=disable" \
+  -log-level=info \
+  -workers=10 \
+  -blacklist-path="./blacklist.txt" \
+  -whitelist-path="./whitelist.txt" \
+  -max-response-size=10485760 \
+  -response-timeout=10 \
+  -max-db-connections=100 \
+  -skip-if-updated-days=7 \
+  -gopher \
+  -seed-url-path="./seed_urls.txt"
 ```
 
 ## Development
