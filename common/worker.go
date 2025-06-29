@@ -140,7 +140,6 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 
 	// Only check blacklist if URL is not whitelisted
 	if !isUrlWhitelisted && blackList.IsBlacklisted(s.URL.String()) {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "URL matches blacklist, skipped")
 		s.Error = null.StringFrom(commonErrors.ErrBlacklistMatch.Error())
 		return saveSnapshotAndRemoveURL(ctx, tx, s)
 	}
@@ -152,7 +151,6 @@ func WorkOnUrl(ctx context.Context, tx *sqlx.Tx, url string) (err error) {
 		// add it as an error and remove url
 		robotMatch = robotsMatch.RobotMatch(ctx, s.URL.String())
 		if robotMatch {
-			contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "URL matches robots.txt, skipped")
 			s.Error = null.StringFrom(commonErrors.ErrRobotsMatch.Error())
 			return saveSnapshotAndRemoveURL(ctx, tx, s)
 		}
@@ -291,7 +289,7 @@ func saveSnapshotAndRemoveURL(ctx context.Context, tx *sqlx.Tx, s *snapshot.Snap
 		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d", s.ResponseCode.ValueOrZero())
 		return removeURL(ctx, tx, s.URL.String())
 	} else {
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d (but old snapshot exists, updating crawl date)", s.ResponseCode.ValueOrZero())
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%2d %s (updating crawl date)", s.ResponseCode.ValueOrZero(), s.Error.ValueOrZero())
 		err = gemdb.Database.UpdateLastCrawled(ctx, tx, s.URL.String())
 		if err != nil {
 			return err

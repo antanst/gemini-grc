@@ -215,7 +215,7 @@ func runJobScheduler() {
 			common.FatalErrorsChan <- err
 			return
 		}
-		// Commit this tx here so the loop sees the changes.
+		// Commit this tx here so the loop below sees the changes.
 		err := tx.Commit()
 		if err != nil {
 			common.FatalErrorsChan <- err
@@ -251,7 +251,7 @@ func runJobScheduler() {
 		// When out of pending URLs, add some random ones.
 		if len(distinctHosts) == 0 {
 			// Queue random old URLs from history.
-			count, err := fetchSnapshotsFromHistory(dbCtx, tx, config.CONFIG.NumOfWorkers*10, config.CONFIG.SkipIfUpdatedDays)
+			count, err := fetchSnapshotsFromHistory(dbCtx, tx, config.CONFIG.NumOfWorkers, config.CONFIG.SkipIfUpdatedDays)
 			if err != nil {
 				common.FatalErrorsChan <- err
 				return
@@ -269,7 +269,7 @@ func runJobScheduler() {
 		}
 
 		// Get some URLs from each host, up to a limit
-		urls, err := gemdb.Database.GetRandomUrlsFromHosts(dbCtx, distinctHosts, 10, tx)
+		urls, err := gemdb.Database.GetRandomUrlsFromHosts(dbCtx, distinctHosts, config.CONFIG.NumOfWorkers, tx)
 		if err != nil {
 			common.FatalErrorsChan <- err
 			return
@@ -287,7 +287,7 @@ func runJobScheduler() {
 			continue
 		}
 
-		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "Queueing %d distinct hosts -> %d urls to crawl", len(distinctHosts), len(urls))
+		contextlog.LogInfoWithContext(ctx, logging.GetSlogger(), "%d urls to crawl", len(urls))
 
 		// Add jobs to WaitGroup before queuing
 		common.WorkerWG.Add(len(urls))

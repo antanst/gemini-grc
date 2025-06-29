@@ -107,6 +107,9 @@ You can access the snapshot history using the included `snapshot_history.sh` scr
 Good starting points:
 
 gemini://warmedal.se/~antenna/
+
 gemini://tlgs.one/
+
 gopher://i-logout.cz:70/1/bongusta/
+
 gopher://gopher.quux.org:70/
