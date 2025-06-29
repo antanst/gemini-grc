@@ -22,8 +22,12 @@ This crawler uses `InsecureSkipVerify: true` in TLS configuration to accept all 
 
 ## How to run
 
-Spin up a PostgreSQL, check `misc/sql/initdb.sql` to create the tables and start the crawler.
-All configuration is done via command-line flags.
+```shell
+make build
+./dist/crawler --help
+```
+
+Check `misc/sql/initdb.sql` to create the PostgreSQL tables.
 
 ## Configuration
 
